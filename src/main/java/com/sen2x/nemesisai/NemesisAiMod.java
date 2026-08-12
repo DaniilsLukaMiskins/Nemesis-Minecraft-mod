@@ -2,6 +2,7 @@ package com.sen2x.nemesisai;
 
 import com.sen2x.nemesisai.command.NemesisCommands;
 import com.sen2x.nemesisai.network.LearningResultPayload;
+import dev.nemesis.entity.ModEntities;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 
@@ -24,8 +25,10 @@ public class NemesisAiMod implements ModInitializer {
 		// However, some things (like resources) may still be uninitialized.
 		// Proceed with mild caution.
 
-		PayloadTypeRegistry.playS2C().register(LearningResultPayload.TYPE, LearningResultPayload.STREAM_CODEC);
+		ModEntities.register();
 		NemesisCommands.register();
+		dev.nemesis.command.NemesisCommands.register();
+		PayloadTypeRegistry.playS2C().register(LearningResultPayload.TYPE, LearningResultPayload.STREAM_CODEC);
 
 		LOGGER.info("Nemesis AI initialized!");
 	}

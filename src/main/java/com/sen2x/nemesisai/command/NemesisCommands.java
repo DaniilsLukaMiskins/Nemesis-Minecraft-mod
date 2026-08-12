@@ -6,6 +6,8 @@ import com.sen2x.nemesisai.api.LearningResult;
 import com.sen2x.nemesisai.api.NemesisFeedback;
 import com.sen2x.nemesisai.api.NemesisMemoryStore;
 import com.sen2x.nemesisai.api.Tactic;
+import dev.nemesis.entity.ModEntities;
+import dev.nemesis.entity.NemesisEntity;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -13,15 +15,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobSpawnType;
-import net.minecraft.world.entity.monster.Zombie;
 
 /**
- * Test/debug commands for teammate 3's HUD and integration work. {@code summon} places a
- * placeholder mob until the real Nemesis entity (teammate 2) exists, {@code learn} simulates
- * a learning event so the HUD can be exercised without the real AI module (Arseniy) wired in,
- * and {@code resetmemory} clears the stub memory store.
+ * Test/debug commands for teammate 3's HUD and integration work. {@code summon} places the
+ * real Nemesis entity (teammate 2's mob module), {@code learn} simulates a learning event so
+ * the HUD can be exercised without the real AI module (Arseniy) wired in, and
+ * {@code resetmemory} clears the stub memory store.
  */
 public final class NemesisCommands {
 	private NemesisCommands() {
@@ -48,17 +48,15 @@ public final class NemesisCommands {
 		ServerLevel level = source.getLevel();
 		BlockPos pos = player.blockPosition().offset(2, 0, 0);
 
-		Zombie testMob = EntityType.ZOMBIE.spawn(level, pos, MobSpawnType.COMMAND);
-		if (testMob == null) {
-			source.sendFailure(Component.literal("Could not spawn the Nemesis test placeholder."));
+		NemesisEntity nemesis = ModEntities.NEMESIS.spawn(level, pos, MobSpawnType.COMMAND);
+		if (nemesis == null) {
+			source.sendFailure(Component.literal("Could not spawn Nemesis."));
 			return 0;
 		}
-		testMob.setCustomName(Component.literal("Nemesis [TEST]"));
-		testMob.setCustomNameVisible(true);
-		testMob.addTag("nemesis_test");
+		nemesis.setCustomName(Component.literal("Nemesis"));
+		nemesis.setCustomNameVisible(true);
 
-		source.sendSuccess(() -> Component.literal(
-				"Spawned a placeholder Nemesis test mob (swap for the real entity once teammate 2's mob module lands)."), true);
+		source.sendSuccess(() -> Component.literal("Spawned Nemesis."), true);
 		return 1;
 	}
 
