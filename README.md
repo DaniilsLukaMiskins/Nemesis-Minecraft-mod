@@ -30,3 +30,5 @@ Built as a three-person hackathon project.
 ## License
 
 See LICENSE.
+
+Nemesis AI is created for the "The Orchestra" Agent Orchestrator Hackathon.
