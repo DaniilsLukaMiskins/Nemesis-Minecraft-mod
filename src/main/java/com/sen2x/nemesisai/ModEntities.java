@@ -14,7 +14,7 @@ public final class ModEntities {
             BuiltInRegistries.ENTITY_TYPE,
             ResourceLocation.fromNamespaceAndPath(NemesisAiMod.MOD_ID, "nemesis"),
             EntityType.Builder.of(NemesisEntity::new, MobCategory.MONSTER)
-                    .sized(0.6F, 1.95F)
+                    .sized(0.9F, 2.75F)
                     .build("nemesis_ai:nemesis")
     );
 
