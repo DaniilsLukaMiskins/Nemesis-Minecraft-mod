@@ -19,10 +19,8 @@ import net.minecraft.world.entity.MobSpawnType;
 import java.util.Comparator;
 
 /**
- * Test/debug commands for teammate 3's HUD and integration work. {@code summon} places a
- * placeholder mob until the real Nemesis entity (teammate 2) exists, {@code learn} simulates
- * a learning event so the HUD can be exercised without the real AI module (Arseniy) wired in,
- * and {@code resetmemory} clears the stub memory store.
+ * Integrated test/debug controls for the real animated Nemesis, its persistent memory,
+ * selectable combat tactics, and HUD learning notifications.
  */
 public final class NemesisCommands {
 	private NemesisCommands() {
@@ -31,9 +29,12 @@ public final class NemesisCommands {
 	public static void register() {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
 			LiteralArgumentBuilder<CommandSourceStack> learn = Commands.literal("learn");
+			LiteralArgumentBuilder<CommandSourceStack> tactics = Commands.literal("tactic");
 			for (Tactic tactic : Tactic.values()) {
 				learn.then(Commands.literal(tactic.name().toLowerCase())
 						.executes(context -> learn(context.getSource(), tactic)));
+				tactics.then(Commands.literal(tactic.name().toLowerCase())
+						.executes(context -> setTactic(context.getSource(), tactic)));
 			}
 
 			dispatcher.register(Commands.literal("nemesis")
@@ -41,6 +42,7 @@ public final class NemesisCommands {
 					.then(Commands.literal("summon").executes(context -> summon(context.getSource())))
 					.then(Commands.literal("memory").executes(context -> memory(context.getSource())))
 					.then(Commands.literal("resetmemory").executes(context -> resetMemory(context.getSource())))
+					.then(tactics)
 					.then(learn));
 		});
 	}
@@ -61,9 +63,7 @@ public final class NemesisCommands {
 
 	private static int memory(CommandSourceStack source) throws CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
-		NemesisEntity nemesis = player.level().getEntitiesOfClass(NemesisEntity.class,
-				player.getBoundingBox().inflate(32.0)).stream()
-				.min(Comparator.comparingDouble(player::distanceToSqr)).orElse(null);
+		NemesisEntity nemesis = nearest(player);
 		if (nemesis == null) {
 			source.sendFailure(Component.literal("No Nemesis found within 32 blocks."));
 			return 0;
@@ -72,6 +72,24 @@ public final class NemesisCommands {
 				+ " | Ranged: " + nemesis.getRangedHits() + " | Melee resistance: "
 				+ nemesis.hasLearnedMelee() + " | Ranged resistance: " + nemesis.hasLearnedRanged()), false);
 		return 1;
+	}
+
+	private static int setTactic(CommandSourceStack source, Tactic tactic) throws CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		NemesisEntity nemesis = nearest(player);
+		if (nemesis == null) {
+			source.sendFailure(Component.literal("No Nemesis found within 32 blocks."));
+			return 0;
+		}
+		nemesis.setTactic(tactic);
+		source.sendSuccess(() -> Component.literal("Nemesis tactic: " + tactic.displayName()), false);
+		return 1;
+	}
+
+	private static NemesisEntity nearest(ServerPlayer player) {
+		return player.level().getEntitiesOfClass(NemesisEntity.class,
+				player.getBoundingBox().inflate(32.0)).stream()
+				.min(Comparator.comparingDouble(player::distanceToSqr)).orElse(null);
 	}
 
 	private static int resetMemory(CommandSourceStack source) throws CommandSyntaxException {

@@ -7,6 +7,7 @@ import com.sen2x.nemesisai.api.Tactic;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -14,8 +15,13 @@ import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Arrow;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import software.bernie.geckolib.animatable.GeoEntity;
@@ -46,6 +52,9 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     private int rangedHits;
     private boolean learnedMelee;
     private boolean learnedRanged;
+    private Tactic tactic = Tactic.DEFAULT;
+    private int tacticCooldown;
+    private int zigzagDirection = 1;
 
     public NemesisEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
@@ -53,12 +62,50 @@ public class NemesisEntity extends Zombie implements GeoEntity {
 
     @Override
     public boolean doHurtTarget(Entity target) {
+        if (tactic == Tactic.DELAYED_ATTACK && tacticCooldown > 0) {
+            return false;
+        }
         if (!level().isClientSide()) {
             triggerAnim("actions", random.nextBoolean() ? "claw" : "bite");
             level().playSound(null, blockPosition(), SoundEvents.RAVAGER_ATTACK,
                     SoundSource.HOSTILE, 1.15F, 0.72F + random.nextFloat() * 0.12F);
         }
+        tacticCooldown = tactic == Tactic.DELAYED_ATTACK ? 30 : 12;
         return super.doHurtTarget(target);
+    }
+
+    @Override
+    public void aiStep() {
+        super.aiStep();
+        if (tacticCooldown > 0) tacticCooldown--;
+        if (level().isClientSide()) return;
+
+        LivingEntity target = getTarget();
+        if (target == null || !target.isAlive()) return;
+
+        if (tactic == Tactic.ZIGZAG_APPROACH && distanceToSqr(target) > 9.0) {
+            if (tickCount % 12 == 0) zigzagDirection = -zigzagDirection;
+            getMoveControl().strafe(0.9F, 0.75F * zigzagDirection);
+        } else if (tactic == Tactic.RANGED_TOWER_ATTACK && tacticCooldown <= 0
+                && distanceToSqr(target) > 16.0 && getSensing().hasLineOfSight(target)) {
+            Arrow arrow = new Arrow(level(), this, new ItemStack(Items.ARROW), null);
+            double dy = target.getEyeY() - arrow.getY();
+            arrow.shoot(target.getX() - getX(), dy, target.getZ() - getZ(), 1.5F, 4.0F);
+            level().addFreshEntity(arrow);
+            tacticCooldown = 40;
+        }
+    }
+
+    public void setTactic(Tactic tactic) {
+        this.tactic = tactic;
+        var speed = getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speed != null) speed.setBaseValue(tactic == Tactic.RUSH_PURSUIT ? 0.38 : 0.23);
+        setSprinting(tactic == Tactic.RUSH_PURSUIT);
+        getNavigation().stop();
+    }
+
+    public Tactic getTactic() {
+        return tactic;
     }
 
     @Override
@@ -97,7 +144,9 @@ public class NemesisEntity extends Zombie implements GeoEntity {
             LearningResult result = new LearningResult(Tactic.DELAYED_ATTACK,
                     "Learned from repeated melee attacks", 0.5F);
             NemesisMemoryStore.record(player.getUUID(), result);
-            NemesisFeedback.broadcastLearning(player, result);
+            if (player instanceof ServerPlayer serverPlayer) {
+                NemesisFeedback.broadcastLearning(serverPlayer, result);
+            }
             player.displayClientMessage(Component.literal("LEARNED: MELEE ATTACKS"), true);
             player.displayClientMessage(Component.literal("TACTIC CHANGED: MELEE RESISTANCE"), false);
         }
@@ -111,7 +160,9 @@ public class NemesisEntity extends Zombie implements GeoEntity {
             LearningResult result = new LearningResult(Tactic.ZIGZAG_APPROACH,
                     "Learned from repeated projectile attacks", 1.0F);
             NemesisMemoryStore.record(player.getUUID(), result);
-            NemesisFeedback.broadcastLearning(player, result);
+            if (player instanceof ServerPlayer serverPlayer) {
+                NemesisFeedback.broadcastLearning(serverPlayer, result);
+            }
             player.displayClientMessage(Component.literal("LEARNED: RANGED ATTACKS"), true);
             player.displayClientMessage(Component.literal("TACTIC CHANGED: PROJECTILE RESISTANCE"), false);
         }
@@ -166,6 +217,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         tag.putInt("NemesisRangedHits", rangedHits);
         tag.putBoolean("NemesisLearnedMelee", learnedMelee);
         tag.putBoolean("NemesisLearnedRanged", learnedRanged);
+        tag.putString("NemesisTactic", tactic.name());
     }
 
     @Override
@@ -175,6 +227,13 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         rangedHits = tag.getInt("NemesisRangedHits");
         learnedMelee = tag.getBoolean("NemesisLearnedMelee");
         learnedRanged = tag.getBoolean("NemesisLearnedRanged");
+        if (tag.contains("NemesisTactic")) {
+            try {
+                setTactic(Tactic.valueOf(tag.getString("NemesisTactic")));
+            } catch (IllegalArgumentException ignored) {
+                setTactic(Tactic.DEFAULT);
+            }
+        }
     }
 
     public int getMeleeHits() { return meleeHits; }

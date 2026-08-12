@@ -20,7 +20,9 @@ All commands live under `/nemesis` and require operator permission (level 2).
 
 | Command | What it does |
 | --- | --- |
-| `/nemesis summon` | Spawns a placeholder zombie named "Nemesis [TEST]" a couple blocks away, for scenes/testing until the real mob entity exists. |
+| `/nemesis summon` | Spawns the real animated GeckoLib Nemesis a couple blocks away. |
+| `/nemesis memory` | Shows the nearest Nemesis melee/ranged learning state. |
+| `/nemesis tactic <name>` | Selects default, delayed, zigzag, rush, or ranged combat behavior. |
 | `/nemesis learn <tactic>` | Simulates a learning event for one of: `default`, `delayed_attack`, `zigzag_approach`, `rush_pursuit`, `ranged_tower_attack`. Triggers the same HUD/message path the real AI module will use. |
 | `/nemesis resetmemory` | Clears the stub per-player memory store. |
 
@@ -30,13 +32,13 @@ All commands live under `/nemesis` and require operator permission (level 2).
 - [ ] Running `/nemesis learn zigzag_approach` right after shows **"TACTIC CHANGED: ZIGZAG APPROACH"** (different tactic than last time).
 - [ ] Running `/nemesis learn zigzag_approach` again (same tactic as current) shows no new banner text, but the adaptation bar still reflects the latest value.
 - [ ] `/nemesis resetmemory` clears the stored state for that player (verify via a fresh `/nemesis learn ...` behaving like the first-ever event).
-- [ ] `/nemesis summon` places a visibly named test mob near the player, usable for demo footage before the real entity is ready.
+- [ ] `/nemesis summon` places the visible animated Nemesis near the player.
 - [ ] HUD does not draw anything before the first learning event (no bar/message clutter on a clean HUD).
 - [ ] F1 (hide GUI) also hides the Nemesis HUD.
 
 ## Integration checklist (once the other modules land)
 
-- Swap `/nemesis summon`'s placeholder zombie for the real Nemesis entity from the mob module.
+- Exercise all `/nemesis tactic` variants and tune their combat timing during playtests.
 - Have the AI module call `NemesisFeedback.broadcastLearning(ServerPlayer, LearningResult)`
   (`src/main/java/com/sen2x/nemesisai/api/NemesisFeedback.java`) instead of the `/nemesis learn`
   test command — the HUD path is already wired to it.
