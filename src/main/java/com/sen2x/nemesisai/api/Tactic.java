@@ -5,11 +5,11 @@ package com.sen2x.nemesisai.api;
  * The HUD/messages module (teammate 3) only ever renders these values.
  */
 public enum Tactic {
-	DEFAULT("Default Assault"),
+	NORMAL("Normal"),
+	FAST_CHASE("Fast Chase"),
 	DELAYED_ATTACK("Delayed Attack"),
 	ZIGZAG_APPROACH("Zigzag Approach"),
-	RUSH_PURSUIT("Rush Pursuit"),
-	RANGED_TOWER_ATTACK("Ranged Tower Attack");
+	RANGED_ATTACK("Ranged Attack");
 
 	private final String displayName;
 

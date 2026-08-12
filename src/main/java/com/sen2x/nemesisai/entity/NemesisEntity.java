@@ -52,7 +52,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     private int rangedHits;
     private boolean learnedMelee;
     private boolean learnedRanged;
-    private Tactic tactic = Tactic.DEFAULT;
+    private Tactic tactic = Tactic.NORMAL;
     private int tacticCooldown;
     private int zigzagDirection = 1;
 
@@ -86,7 +86,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         if (tactic == Tactic.ZIGZAG_APPROACH && distanceToSqr(target) > 9.0) {
             if (tickCount % 12 == 0) zigzagDirection = -zigzagDirection;
             getMoveControl().strafe(0.9F, 0.75F * zigzagDirection);
-        } else if (tactic == Tactic.RANGED_TOWER_ATTACK && tacticCooldown <= 0
+        } else if (tactic == Tactic.RANGED_ATTACK && tacticCooldown <= 0
                 && distanceToSqr(target) > 16.0 && getSensing().hasLineOfSight(target)) {
             Arrow arrow = new Arrow(level(), this, new ItemStack(Items.ARROW), null);
             double dy = target.getEyeY() - arrow.getY();
@@ -99,8 +99,8 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     public void setTactic(Tactic tactic) {
         this.tactic = tactic;
         var speed = getAttribute(Attributes.MOVEMENT_SPEED);
-        if (speed != null) speed.setBaseValue(tactic == Tactic.RUSH_PURSUIT ? 0.38 : 0.23);
-        setSprinting(tactic == Tactic.RUSH_PURSUIT);
+        if (speed != null) speed.setBaseValue(tactic == Tactic.FAST_CHASE ? 0.38 : 0.25);
+        setSprinting(tactic == Tactic.FAST_CHASE);
         getNavigation().stop();
     }
 
@@ -231,7 +231,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
             try {
                 setTactic(Tactic.valueOf(tag.getString("NemesisTactic")));
             } catch (IllegalArgumentException ignored) {
-                setTactic(Tactic.DEFAULT);
+                setTactic(Tactic.NORMAL);
             }
         }
     }

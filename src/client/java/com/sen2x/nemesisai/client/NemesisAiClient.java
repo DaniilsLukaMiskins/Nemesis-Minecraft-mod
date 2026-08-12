@@ -19,8 +19,7 @@ public class NemesisAiClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(LearningResultPayload.TYPE, (payload, context) -> {
             String message = NemesisHudState.update(payload.toLearningResult());
             if (message != null && context.player() != null) {
-                context.player().displayClientMessage(
-                        Component.literal(message).withStyle(ChatFormatting.RED), true);
+                context.player().displayClientMessage(Component.literal(message).withStyle(ChatFormatting.RED), true);
             }
         });
     }
