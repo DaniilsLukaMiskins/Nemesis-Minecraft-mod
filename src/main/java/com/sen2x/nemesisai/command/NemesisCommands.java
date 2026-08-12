@@ -70,7 +70,10 @@ public final class NemesisCommands {
 		}
 		source.sendSuccess(() -> Component.literal("NEMESIS MEMORY | Melee: " + nemesis.getMeleeHits()
 				+ " | Ranged: " + nemesis.getRangedHits() + " | Melee resistance: "
-				+ nemesis.hasLearnedMelee() + " | Ranged resistance: " + nemesis.hasLearnedRanged()), false);
+				+ nemesis.hasLearnedMelee() + " | Ranged resistance: " + nemesis.hasLearnedRanged()
+				+ " | Tactic: " + nemesis.getTactic().name().toLowerCase()
+				+ " | Route confidence: " + nemesis.getRouteConfidence()
+				+ " | Ambush: " + (nemesis.getAmbushPoint() == null ? "none" : nemesis.getAmbushPoint().toShortString())), false);
 		return 1;
 	}
 

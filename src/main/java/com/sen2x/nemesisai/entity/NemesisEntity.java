@@ -17,6 +17,13 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
+import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
+import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
+import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Arrow;
@@ -24,6 +31,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Map;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.animation.AnimatableManager;
@@ -54,10 +65,28 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     private boolean learnedRanged;
     private Tactic tactic = Tactic.NORMAL;
     private int tacticCooldown;
-    private int zigzagDirection = 1;
+    private final Map<Long, Integer> routeVisits = new HashMap<>();
+    private BlockPos lastRouteSample;
+    private BlockPos ambushPoint;
+    private int routeConfidence;
+    private int ambushWaitTicks;
 
     public NemesisEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
+    }
+
+    @Override
+    protected void registerGoals() {
+        goalSelector.addGoal(0, new FloatGoal(this));
+        goalSelector.addGoal(1, new AmbushGoal());
+        goalSelector.addGoal(2, new NormalMeleeGoal());
+        goalSelector.addGoal(2, new DelayedAttackGoal());
+        goalSelector.addGoal(2, new ZigzagGoal());
+        goalSelector.addGoal(2, new RangedGoal());
+        goalSelector.addGoal(7, new RandomStrollGoal(this, 0.8));
+        goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 12.0F));
+        goalSelector.addGoal(9, new RandomLookAroundGoal(this));
+        targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, true));
     }
 
     @Override
@@ -82,17 +111,27 @@ public class NemesisEntity extends Zombie implements GeoEntity {
 
         LivingEntity target = getTarget();
         if (target == null || !target.isAlive()) return;
+        if (target instanceof Player player && tickCount % 40 == 0) observeRoute(player);
+    }
 
-        if (tactic == Tactic.ZIGZAG_APPROACH && distanceToSqr(target) > 9.0) {
-            if (tickCount % 12 == 0) zigzagDirection = -zigzagDirection;
-            getMoveControl().strafe(0.9F, 0.75F * zigzagDirection);
-        } else if (tactic == Tactic.RANGED_ATTACK && tacticCooldown <= 0
-                && distanceToSqr(target) > 16.0 && getSensing().hasLineOfSight(target)) {
-            Arrow arrow = new Arrow(level(), this, new ItemStack(Items.ARROW), null);
-            double dy = target.getEyeY() - arrow.getY();
-            arrow.shoot(target.getX() - getX(), dy, target.getZ() - getZ(), 1.5F, 4.0F);
-            level().addFreshEntity(arrow);
-            tacticCooldown = 40;
+    private void observeRoute(Player player) {
+        BlockPos current = player.blockPosition();
+        if (lastRouteSample != null && current.distSqr(lastRouteSample) < 16.0) return;
+        lastRouteSample = current;
+
+        // Eight-block cells tolerate small deviations while still representing a route.
+        BlockPos cell = new BlockPos(Math.floorDiv(current.getX(), 8) * 8,
+                current.getY(), Math.floorDiv(current.getZ(), 8) * 8);
+        int visits = routeVisits.merge(cell.asLong(), 1, Integer::sum);
+        routeConfidence = Math.max(routeConfidence, visits);
+        if (visits >= 3 && distanceToSqr(Vec3.atCenterOf(cell)) > 36.0) {
+            Vec3 velocity = player.getDeltaMovement();
+            Vec3 ahead = Vec3.atCenterOf(cell).add(velocity.x * 50.0, 0, velocity.z * 50.0);
+            ambushPoint = BlockPos.containing(ahead);
+            ambushWaitTicks = 200;
+        }
+        if (routeVisits.size() > 32) {
+            routeVisits.entrySet().removeIf(entry -> entry.getValue() <= 1);
         }
     }
 
@@ -106,6 +145,142 @@ public class NemesisEntity extends Zombie implements GeoEntity {
 
     public Tactic getTactic() {
         return tactic;
+    }
+
+    private boolean hasTarget() {
+        return getTarget() != null && getTarget().isAlive();
+    }
+
+    private boolean inMeleeRange(LivingEntity target) {
+        double reach = getBbWidth() * 2.0F;
+        return distanceToSqr(target) <= reach * reach + target.getBbWidth();
+    }
+
+    private final class NormalMeleeGoal extends MeleeAttackGoal {
+        private NormalMeleeGoal() { super(NemesisEntity.this, 1.0, false); }
+
+        @Override public boolean canUse() {
+            return (tactic == Tactic.NORMAL || tactic == Tactic.FAST_CHASE) && super.canUse();
+        }
+        @Override public boolean canContinueToUse() {
+            return (tactic == Tactic.NORMAL || tactic == Tactic.FAST_CHASE) && super.canContinueToUse();
+        }
+    }
+
+    private abstract class TacticGoal extends Goal {
+        private final Tactic required;
+        private TacticGoal(Tactic required) {
+            this.required = required;
+            setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
+        }
+        @Override public boolean canUse() { return tactic == required && hasTarget(); }
+        @Override public boolean canContinueToUse() { return canUse(); }
+    }
+
+    private final class DelayedAttackGoal extends TacticGoal {
+        private int windup;
+        private DelayedAttackGoal() { super(Tactic.DELAYED_ATTACK); }
+        @Override public void tick() {
+            LivingEntity target = getTarget();
+            if (target == null) return;
+            getLookControl().setLookAt(target, 30, 30);
+            if (!inMeleeRange(target)) {
+                windup = 0;
+                getNavigation().moveTo(target, 1.0);
+            } else {
+                getNavigation().stop();
+                if (windup == 0 && tacticCooldown == 0) windup = 8 + random.nextInt(7);
+                if (windup > 0 && --windup == 0) doHurtTarget(target);
+            }
+        }
+        @Override public void stop() { windup = 0; }
+    }
+
+    private final class ZigzagGoal extends TacticGoal {
+        private int direction = 1;
+        private int pathTicks;
+        private int attackCooldown;
+        private ZigzagGoal() { super(Tactic.ZIGZAG_APPROACH); }
+        @Override public void tick() {
+            LivingEntity target = getTarget();
+            if (target == null) return;
+            getLookControl().setLookAt(target, 30, 30);
+            if (inMeleeRange(target)) {
+                getNavigation().stop();
+                if (attackCooldown-- <= 0) {
+                    doHurtTarget(target);
+                    attackCooldown = 20;
+                }
+                return;
+            }
+            if (--pathTicks <= 0) {
+                Vec3 forward = target.position().subtract(position()).normalize();
+                Vec3 side = new Vec3(-forward.z, 0, forward.x).scale(2.5 * direction);
+                Vec3 waypoint = position().add(forward.scale(4.0)).add(side);
+                getNavigation().moveTo(waypoint.x, waypoint.y, waypoint.z, 1.08);
+                direction = -direction;
+                pathTicks = 12;
+            }
+            if (attackCooldown > 0) attackCooldown--;
+        }
+    }
+
+    private final class RangedGoal extends TacticGoal {
+        private int shotCooldown;
+        private RangedGoal() { super(Tactic.RANGED_ATTACK); }
+        @Override public void tick() {
+            LivingEntity target = getTarget();
+            if (target == null) return;
+            getLookControl().setLookAt(target, 30, 30);
+            double distance = distanceTo(target);
+            if (distance < 6.0) {
+                Vec3 away = position().subtract(target.position()).normalize();
+                Vec3 retreat = position().add(away.scale(4));
+                getNavigation().moveTo(retreat.x, retreat.y, retreat.z, 1.0);
+            } else if (distance > 12.0) {
+                getNavigation().moveTo(target, 0.9);
+            } else {
+                getNavigation().stop();
+            }
+            if (shotCooldown-- <= 0 && getSensing().hasLineOfSight(target)) {
+                Arrow arrow = new Arrow(level(), NemesisEntity.this, new ItemStack(Items.ARROW), null);
+                arrow.shoot(target.getX() - getX(), target.getEyeY() - arrow.getY(),
+                        target.getZ() - getZ(), 1.5F, 4.0F);
+                level().addFreshEntity(arrow);
+                shotCooldown = 40;
+            }
+        }
+        @Override public void stop() { shotCooldown = 0; }
+    }
+
+    private final class AmbushGoal extends Goal {
+        private AmbushGoal() { setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK)); }
+        @Override public boolean canUse() {
+            return ambushPoint != null && ambushWaitTicks > 0 && routeConfidence >= 3 && hasTarget();
+        }
+        @Override public boolean canContinueToUse() { return canUse(); }
+        @Override public void tick() {
+            LivingEntity target = getTarget();
+            if (target == null || ambushPoint == null) return;
+            ambushWaitTicks--;
+            double pointDistance = distanceToSqr(Vec3.atCenterOf(ambushPoint));
+            if (pointDistance > 4.0) {
+                getNavigation().moveTo(ambushPoint.getX() + 0.5, ambushPoint.getY(),
+                        ambushPoint.getZ() + 0.5, 1.15);
+                setSprinting(true);
+            } else {
+                getNavigation().stop();
+                setSprinting(false);
+                getLookControl().setLookAt(target, 30, 30);
+                if (distanceToSqr(target) < 16.0 && tacticCooldown == 0) {
+                    doHurtTarget(target);
+                    ambushPoint = null;
+                    routeConfidence = 0;
+                }
+            }
+            if (ambushWaitTicks <= 0) ambushPoint = null;
+        }
+        @Override public void stop() { setSprinting(tactic == Tactic.FAST_CHASE); }
     }
 
     @Override
@@ -140,6 +315,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         meleeHits++;
         if (meleeHits >= LEARNING_THRESHOLD && !learnedMelee) {
             learnedMelee = true;
+            setTactic(Tactic.DELAYED_ATTACK);
             triggerAnim("actions", "adapt_melee");
             LearningResult result = new LearningResult(Tactic.DELAYED_ATTACK,
                     "Learned from repeated melee attacks", 0.5F);
@@ -156,6 +332,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         rangedHits++;
         if (rangedHits >= LEARNING_THRESHOLD && !learnedRanged) {
             learnedRanged = true;
+            setTactic(Tactic.ZIGZAG_APPROACH);
             triggerAnim("actions", "adapt_ranged");
             LearningResult result = new LearningResult(Tactic.ZIGZAG_APPROACH,
                     "Learned from repeated projectile attacks", 1.0F);
@@ -218,6 +395,9 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         tag.putBoolean("NemesisLearnedMelee", learnedMelee);
         tag.putBoolean("NemesisLearnedRanged", learnedRanged);
         tag.putString("NemesisTactic", tactic.name());
+        tag.putInt("NemesisRouteConfidence", routeConfidence);
+        tag.putInt("NemesisAmbushWait", ambushWaitTicks);
+        if (ambushPoint != null) tag.putLong("NemesisAmbushPoint", ambushPoint.asLong());
     }
 
     @Override
@@ -227,6 +407,9 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         rangedHits = tag.getInt("NemesisRangedHits");
         learnedMelee = tag.getBoolean("NemesisLearnedMelee");
         learnedRanged = tag.getBoolean("NemesisLearnedRanged");
+        routeConfidence = tag.getInt("NemesisRouteConfidence");
+        ambushWaitTicks = tag.getInt("NemesisAmbushWait");
+        if (tag.contains("NemesisAmbushPoint")) ambushPoint = BlockPos.of(tag.getLong("NemesisAmbushPoint"));
         if (tag.contains("NemesisTactic")) {
             try {
                 setTactic(Tactic.valueOf(tag.getString("NemesisTactic")));
@@ -240,4 +423,6 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     public int getRangedHits() { return rangedHits; }
     public boolean hasLearnedMelee() { return learnedMelee; }
     public boolean hasLearnedRanged() { return learnedRanged; }
+    public int getRouteConfidence() { return routeConfidence; }
+    public BlockPos getAmbushPoint() { return ambushPoint; }
 }
