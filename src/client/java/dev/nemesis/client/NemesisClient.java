@@ -1,17 +1,13 @@
-package com.sen2x.nemesisai.client;
+package dev.nemesis.client;
 
 import dev.nemesis.client.render.NemesisEntityRenderer;
 import dev.nemesis.entity.ModEntities;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 
-public class NemesisAiClient implements ClientModInitializer {
-
+public final class NemesisClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
-        EntityRendererRegistry.register(
-                ModEntities.NEMESIS,
-                NemesisEntityRenderer::new
-        );
+        EntityRendererRegistry.register(ModEntities.NEMESIS, NemesisEntityRenderer::new);
     }
 }
