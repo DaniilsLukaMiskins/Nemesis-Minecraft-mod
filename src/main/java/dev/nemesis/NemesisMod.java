@@ -1,5 +1,6 @@
 package dev.nemesis;
 
+import dev.nemesis.command.NemesisCommands;
 import dev.nemesis.entity.ModEntities;
 import net.fabricmc.api.ModInitializer;
 
@@ -9,5 +10,6 @@ public final class NemesisMod implements ModInitializer {
     @Override
     public void onInitialize() {
         ModEntities.register();
+        NemesisCommands.register();
     }
 }
