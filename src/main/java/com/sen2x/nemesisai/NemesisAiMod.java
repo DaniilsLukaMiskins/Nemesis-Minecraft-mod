@@ -12,6 +12,7 @@ public class NemesisAiMod implements ModInitializer {
     @Override
     public void onInitialize() {
         ModEntities.register();
+        NemesisCommands.register();
         LOGGER.info("Nemesis AI initialized!");
     }
 
