@@ -1,8 +1,13 @@
 pluginManagement {
-    repositories {
-        maven { url = 'https://maven.fabricmc.net/' }
-        gradlePluginPortal()
-    }
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
 }
 
-rootProject.name = 'nemesis'
+// Should match your nemesis_ai
+rootProject.name = 'nemesis_ai'
