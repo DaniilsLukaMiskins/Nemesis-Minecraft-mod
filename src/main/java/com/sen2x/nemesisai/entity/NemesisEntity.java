@@ -1,5 +1,5 @@
 package com.sen2x.nemesisai.entity;
-
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
@@ -90,7 +90,25 @@ public class NemesisEntity extends Zombie {
             );
         }
     }
+@Override
+public void addAdditionalSaveData(CompoundTag tag) {
+    super.addAdditionalSaveData(tag);
 
+    tag.putInt("NemesisMeleeHits", meleeHits);
+    tag.putInt("NemesisRangedHits", rangedHits);
+    tag.putBoolean("NemesisLearnedMelee", learnedMelee);
+    tag.putBoolean("NemesisLearnedRanged", learnedRanged);
+}
+
+@Override
+public void readAdditionalSaveData(CompoundTag tag) {
+    super.readAdditionalSaveData(tag);
+
+    meleeHits = tag.getInt("NemesisMeleeHits");
+    rangedHits = tag.getInt("NemesisRangedHits");
+    learnedMelee = tag.getBoolean("NemesisLearnedMelee");
+    learnedRanged = tag.getBoolean("NemesisLearnedRanged");
+}
     public int getMeleeHits() {
         return meleeHits;
     }
