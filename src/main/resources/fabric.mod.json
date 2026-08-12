@@ -1,20 +1,38 @@
 {
-  "schemaVersion": 1,
-  "id": "nemesis",
-  "version": "${version}",
-  "name": "Nemesis",
-  "description": "A minimal hostile combat mob foundation for the Nemesis AI hackathon.",
-  "authors": ["Nemesis contributors"],
-  "license": "MIT",
-  "environment": "*",
-  "entrypoints": {
-    "main": ["dev.nemesis.NemesisMod"],
-    "client": ["dev.nemesis.client.NemesisClient"]
-  },
-  "depends": {
-    "fabricloader": ">=0.16.14",
-    "fabric-api": "*",
-    "minecraft": "=1.21.1",
-    "java": ">=21"
-  }
+	"schemaVersion": 1,
+	"id": "nemesis_ai",
+	"version": "${version}",
+	"name": "Nemesis AI",
+	"description": "An adaptive Minecraft enemy that learns from the player's combat tactics.",
+	"authors": [
+		"Sen2x"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/nemesis_ai/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.sen2x.nemesisai.NemesisAiMod"
+		],
+		"client": [
+			"com.sen2x.nemesisai.client.NemesisAiClient"
+		]
+	},
+	"mixins": [
+		"nemesis_ai.mixins.json",
+		{
+			"config": "nemesis_ai.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
 }
