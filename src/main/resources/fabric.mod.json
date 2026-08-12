@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "nemesis",
+  "version": "${version}",
+  "name": "Nemesis",
+  "description": "A minimal hostile combat mob foundation for the Nemesis AI hackathon.",
+  "authors": ["Nemesis contributors"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.nemesis.NemesisMod"],
+    "client": ["dev.nemesis.client.NemesisClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "fabric-api": "*",
+    "minecraft": "=1.21.1",
+    "java": ">=21"
+  }
+}
