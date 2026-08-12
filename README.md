@@ -23,9 +23,29 @@ The enemy observes player combat tactics, remembers repeated behavior, and chang
 
 Initial Fabric project configured, built, and launched successfully.
 
+HUD, learning-event networking, and test/debug commands (`/nemesis summon`,
+`/nemesis learn <tactic>`, `/nemesis resetmemory`) are implemented against a
+stub `LearningResult`/`Tactic` contract so the AI module and mob module can be
+wired in independently. See [TESTING.md](TESTING.md) for how to exercise it.
+
 ## Team
 
 Built as a three-person hackathon project.
+
+| Member | Area | Core tasks |
+| --- | --- | --- |
+| Arseniy | AI learning engine | player action tracking, habit profile, tactic selection, reward/penalty, memory persistence, "What Nemesis Learned" screen |
+| Teammate 2 | Mod & mob | Fabric setup, Nemesis entity, movement/attacks, shield/bow/pursuit tactics, ranged tower attack |
+| Teammate 3 | HUD, testing & presentation | adaptation HUD, learning messages, test world, scenario testing, README/Devpost, demo video |
+
+### Task checklist (Teammate 3 slice)
+
+- [x] Adaptation HUD overlay
+- [x] `LEARNED:` / `TACTIC CHANGED:` messages
+- [x] `/nemesis summon` and `/nemesis resetmemory` commands
+- [x] Test world instructions and scenario checklist
+- [ ] Full scenario pass once the AI and mob modules are integrated
+- [ ] Screenshots, Devpost page, demo video
 
 ## License
 

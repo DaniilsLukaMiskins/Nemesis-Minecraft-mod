@@ -1,6 +1,9 @@
 package com.sen2x.nemesisai;
 
+import com.sen2x.nemesisai.command.NemesisCommands;
+import com.sen2x.nemesisai.network.LearningResultPayload;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +14,7 @@ public class NemesisAiMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        PayloadTypeRegistry.playS2C().register(LearningResultPayload.TYPE, LearningResultPayload.STREAM_CODEC);
         ModEntities.register();
         NemesisCommands.register();
         LOGGER.info("Nemesis AI initialized!");

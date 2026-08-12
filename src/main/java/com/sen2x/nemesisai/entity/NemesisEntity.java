@@ -1,5 +1,9 @@
 package com.sen2x.nemesisai.entity;
 
+import com.sen2x.nemesisai.api.LearningResult;
+import com.sen2x.nemesisai.api.NemesisFeedback;
+import com.sen2x.nemesisai.api.NemesisMemoryStore;
+import com.sen2x.nemesisai.api.Tactic;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
@@ -90,6 +94,10 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         if (meleeHits >= LEARNING_THRESHOLD && !learnedMelee) {
             learnedMelee = true;
             triggerAnim("actions", "adapt_melee");
+            LearningResult result = new LearningResult(Tactic.DELAYED_ATTACK,
+                    "Learned from repeated melee attacks", 0.5F);
+            NemesisMemoryStore.record(player.getUUID(), result);
+            NemesisFeedback.broadcastLearning(player, result);
             player.displayClientMessage(Component.literal("LEARNED: MELEE ATTACKS"), true);
             player.displayClientMessage(Component.literal("TACTIC CHANGED: MELEE RESISTANCE"), false);
         }
@@ -100,6 +108,10 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         if (rangedHits >= LEARNING_THRESHOLD && !learnedRanged) {
             learnedRanged = true;
             triggerAnim("actions", "adapt_ranged");
+            LearningResult result = new LearningResult(Tactic.ZIGZAG_APPROACH,
+                    "Learned from repeated projectile attacks", 1.0F);
+            NemesisMemoryStore.record(player.getUUID(), result);
+            NemesisFeedback.broadcastLearning(player, result);
             player.displayClientMessage(Component.literal("LEARNED: RANGED ATTACKS"), true);
             player.displayClientMessage(Component.literal("TACTIC CHANGED: PROJECTILE RESISTANCE"), false);
         }
