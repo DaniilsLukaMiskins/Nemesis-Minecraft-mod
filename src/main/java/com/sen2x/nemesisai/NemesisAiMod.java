@@ -1,6 +1,9 @@
 package com.sen2x.nemesisai;
 
+import com.sen2x.nemesisai.command.NemesisCommands;
+import com.sen2x.nemesisai.network.LearningResultPayload;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 
 import net.minecraft.resources.ResourceLocation;
 
@@ -20,6 +23,9 @@ public class NemesisAiMod implements ModInitializer {
 		// This code runs as soon as Minecraft is in a mod-load-ready state.
 		// However, some things (like resources) may still be uninitialized.
 		// Proceed with mild caution.
+
+		PayloadTypeRegistry.playS2C().register(LearningResultPayload.TYPE, LearningResultPayload.STREAM_CODEC);
+		NemesisCommands.register();
 
 		LOGGER.info("Nemesis AI initialized!");
 	}
