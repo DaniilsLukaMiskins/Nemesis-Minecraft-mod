@@ -43,6 +43,10 @@ import software.bernie.geckolib.animation.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 public class NemesisEntity extends Zombie implements GeoEntity {
+    private static final double AMBUSH_MIN_TARGET_DISTANCE_SQR = 12.0 * 12.0;
+    private static final double AMBUSH_MAX_TARGET_DISTANCE_SQR = 40.0 * 40.0;
+    private static final double AMBUSH_LEAD_DISTANCE = 16.0;
+    private static final int AMBUSH_WAIT_DURATION = 600;
     private enum Habit {
         SHIELD(Tactic.DELAYED_ATTACK, "blocking with a shield"),
         RANGED(Tactic.ZIGZAG_APPROACH, "using ranged attacks"),
@@ -144,6 +148,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     private void observeRoute(Player player) {
         BlockPos current = player.blockPosition();
         if (lastRouteSample != null && current.distSqr(lastRouteSample) < 16.0) return;
+        BlockPos previous = lastRouteSample;
         lastRouteSample = current;
 
         // Eight-block cells tolerate small deviations while still representing a route.
@@ -151,11 +156,18 @@ public class NemesisEntity extends Zombie implements GeoEntity {
                 current.getY(), Math.floorDiv(current.getZ(), 8) * 8);
         int visits = routeVisits.merge(cell.asLong(), 1, Integer::sum);
         routeConfidence = Math.max(routeConfidence, visits);
-        if (visits >= 3 && distanceToSqr(Vec3.atCenterOf(cell)) > 36.0) {
-            Vec3 velocity = player.getDeltaMovement();
-            Vec3 ahead = Vec3.atCenterOf(cell).add(velocity.x * 50.0, 0, velocity.z * 50.0);
-            ambushPoint = BlockPos.containing(ahead);
-            ambushWaitTicks = 200;
+        double targetDistance = distanceToSqr(player);
+        if (visits >= 3 && previous != null
+                && targetDistance >= AMBUSH_MIN_TARGET_DISTANCE_SQR
+                && targetDistance <= AMBUSH_MAX_TARGET_DISTANCE_SQR) {
+            Vec3 direction = new Vec3(current.getX() - previous.getX(), 0,
+                    current.getZ() - previous.getZ());
+            if (direction.lengthSqr() > 0.25) {
+                Vec3 ahead = Vec3.atCenterOf(current).add(direction.normalize().scale(AMBUSH_LEAD_DISTANCE));
+                ambushPoint = BlockPos.containing(ahead.x, current.getY(), ahead.z);
+                ambushWaitTicks = AMBUSH_WAIT_DURATION;
+                getNavigation().stop();
+            }
         }
         if (routeVisits.size() > 32) {
             routeVisits.entrySet().removeIf(entry -> entry.getValue() <= 1);
@@ -293,13 +305,13 @@ public class NemesisEntity extends Zombie implements GeoEntity {
             double pointDistance = distanceToSqr(Vec3.atCenterOf(ambushPoint));
             if (pointDistance > 4.0) {
                 getNavigation().moveTo(ambushPoint.getX() + 0.5, ambushPoint.getY(),
-                        ambushPoint.getZ() + 0.5, 1.15);
+                        ambushPoint.getZ() + 0.5, 1.25);
                 setSprinting(true);
             } else {
                 getNavigation().stop();
                 setSprinting(false);
                 getLookControl().setLookAt(target, 30, 30);
-                if (distanceToSqr(target) < 16.0 && tacticCooldown == 0) {
+                if (distanceToSqr(target) < 12.25 && tacticCooldown == 0) {
                     doHurtTarget(target);
                     ambushPoint = null;
                     routeConfidence = 0;
@@ -458,6 +470,16 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         tag.putInt("NemesisRouteConfidence", routeConfidence);
         tag.putInt("NemesisAmbushWait", ambushWaitTicks);
         if (ambushPoint != null) tag.putLong("NemesisAmbushPoint", ambushPoint.asLong());
+        long[] routeCells = new long[routeVisits.size()];
+        int[] routeCounts = new int[routeVisits.size()];
+        int routeIndex = 0;
+        for (Map.Entry<Long, Integer> entry : routeVisits.entrySet()) {
+            routeCells[routeIndex] = entry.getKey();
+            routeCounts[routeIndex] = entry.getValue();
+            routeIndex++;
+        }
+        tag.putLongArray("NemesisRouteCells", routeCells);
+        tag.putIntArray("NemesisRouteCounts", routeCounts);
         for (Habit habit : Habit.values()) tag.putFloat("NemesisHabit" + habit.name(), habitWeights[habit.ordinal()]);
     }
 
@@ -471,6 +493,12 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         routeConfidence = tag.getInt("NemesisRouteConfidence");
         ambushWaitTicks = tag.getInt("NemesisAmbushWait");
         if (tag.contains("NemesisAmbushPoint")) ambushPoint = BlockPos.of(tag.getLong("NemesisAmbushPoint"));
+        long[] routeCells = tag.getLongArray("NemesisRouteCells");
+        int[] routeCounts = tag.getIntArray("NemesisRouteCounts");
+        routeVisits.clear();
+        for (int i = 0; i < Math.min(routeCells.length, routeCounts.length); i++) {
+            routeVisits.put(routeCells[i], routeCounts[i]);
+        }
         for (Habit habit : Habit.values()) habitWeights[habit.ordinal()] = tag.getFloat("NemesisHabit" + habit.name());
         if (tag.contains("NemesisTactic")) {
             try {
