@@ -43,9 +43,10 @@ import software.bernie.geckolib.animation.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 public class NemesisEntity extends Zombie implements GeoEntity {
-    private static final double AMBUSH_MIN_TARGET_DISTANCE_SQR = 12.0 * 12.0;
-    private static final double AMBUSH_MAX_TARGET_DISTANCE_SQR = 40.0 * 40.0;
-    private static final double AMBUSH_LEAD_DISTANCE = 16.0;
+    private static final double COMBAT_RANGE_SQR = 50.0 * 50.0;
+    private static final double AMBUSH_MIN_TARGET_DISTANCE_SQR = 50.0 * 50.0;
+    private static final double AMBUSH_MAX_TARGET_DISTANCE_SQR = 100.0 * 100.0;
+    private static final double AMBUSH_LEAD_DISTANCE = 20.0;
     private static final int AMBUSH_WAIT_DURATION = 600;
     private enum Habit {
         SHIELD(Tactic.DELAYED_ATTACK, "blocking with a shield"),
@@ -133,7 +134,12 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         LivingEntity target = getTarget();
         if (target == null || !target.isAlive()) return;
         // Sample quickly enough to enter stalking mode before ordinary pursuit closes the gap.
-        if (target instanceof Player player && tickCount % 10 == 0) observeRoute(player);
+        double targetDistanceSqr = distanceToSqr(target);
+        if (target instanceof Player player && tickCount % 10 == 0
+                && targetDistanceSqr > COMBAT_RANGE_SQR
+                && targetDistanceSqr <= AMBUSH_MAX_TARGET_DISTANCE_SQR) {
+            observeRoute(player);
+        }
         if (--habitObservationTimer <= 0) {
             habitObservationTimer = 20;
             for (int i = 0; i < habitWeights.length; i++) habitWeights[i] *= HABIT_DECAY;
@@ -192,6 +198,10 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         return getTarget() != null && getTarget().isAlive();
     }
 
+    private boolean targetInCombatRange() {
+        return hasTarget() && distanceToSqr(getTarget()) <= COMBAT_RANGE_SQR;
+    }
+
     private boolean inMeleeRange(LivingEntity target) {
         double reach = getBbWidth() * 2.0F;
         return distanceToSqr(target) <= reach * reach + target.getBbWidth();
@@ -201,10 +211,12 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         private NormalMeleeGoal() { super(NemesisEntity.this, 1.0, false); }
 
         @Override public boolean canUse() {
-            return (tactic == Tactic.NORMAL || tactic == Tactic.FAST_CHASE) && super.canUse();
+            return targetInCombatRange()
+                    && (tactic == Tactic.NORMAL || tactic == Tactic.FAST_CHASE) && super.canUse();
         }
         @Override public boolean canContinueToUse() {
-            return (tactic == Tactic.NORMAL || tactic == Tactic.FAST_CHASE) && super.canContinueToUse();
+            return targetInCombatRange()
+                    && (tactic == Tactic.NORMAL || tactic == Tactic.FAST_CHASE) && super.canContinueToUse();
         }
     }
 
@@ -214,7 +226,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
             this.required = required;
             setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
         }
-        @Override public boolean canUse() { return tactic == required && hasTarget(); }
+        @Override public boolean canUse() { return tactic == required && targetInCombatRange(); }
         @Override public boolean canContinueToUse() { return canUse(); }
     }
 
@@ -329,7 +341,9 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         private int repositionTicks;
         private StalkRouteGoal() { setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK)); }
         @Override public boolean canUse() {
-            return routeConfidence > 0 && routeConfidence < 3 && ambushPoint == null && hasTarget();
+            if (!hasTarget() || ambushPoint != null) return false;
+            double distance = distanceToSqr(getTarget());
+            return distance > COMBAT_RANGE_SQR && distance <= AMBUSH_MAX_TARGET_DISTANCE_SQR;
         }
         @Override public boolean canContinueToUse() { return canUse(); }
         @Override public void tick() {
@@ -343,12 +357,12 @@ public class NemesisEntity extends Zombie implements GeoEntity {
             Vec3 fromTarget = position().subtract(target.position());
             if (fromTarget.lengthSqr() < 0.1) fromTarget = new Vec3(1, 0, 0);
             Vec3 radial = fromTarget.normalize();
-            if (distance < 14.0) {
-                Vec3 retreat = target.position().add(radial.scale(20.0));
+            if (distance < 58.0) {
+                Vec3 retreat = target.position().add(radial.scale(70.0));
                 getNavigation().moveTo(retreat.x, retreat.y, retreat.z, 1.15);
                 setSprinting(true);
-            } else if (distance > 28.0) {
-                Vec3 watch = target.position().add(radial.scale(20.0));
+            } else if (distance > 85.0) {
+                Vec3 watch = target.position().add(radial.scale(72.0));
                 getNavigation().moveTo(watch.x, watch.y, watch.z, 1.0);
                 setSprinting(false);
             } else {
