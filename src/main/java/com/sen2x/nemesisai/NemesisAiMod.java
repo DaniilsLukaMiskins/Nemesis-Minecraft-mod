@@ -1,26 +1,39 @@
 package com.sen2x.nemesisai;
 
-import dev.nemesis.command.NemesisCommands;
+import com.sen2x.nemesisai.command.NemesisCommands;
+import com.sen2x.nemesisai.network.LearningResultPayload;
 import dev.nemesis.entity.ModEntities;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+
 import net.minecraft.resources.ResourceLocation;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class NemesisAiMod implements ModInitializer {
-    public static final String MOD_ID = "nemesis_ai";
+	public static final String MOD_ID = "nemesis_ai";
 
-    public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+	// This logger is used to write text to the console and the log file.
+	// It is considered best practice to use your mod id as the logger's name.
+	// That way, it's clear which mod wrote info, warnings, and errors.
+	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-    @Override
-    public void onInitialize() {
-        ModEntities.register();
-        NemesisCommands.register();
+	@Override
+	public void onInitialize() {
+		// This code runs as soon as Minecraft is in a mod-load-ready state.
+		// However, some things (like resources) may still be uninitialized.
+		// Proceed with mild caution.
 
-        LOGGER.info("Nemesis AI initialized!");
-    }
+		ModEntities.register();
+		NemesisCommands.register();
+		dev.nemesis.command.NemesisCommands.register();
+		PayloadTypeRegistry.playS2C().register(LearningResultPayload.TYPE, LearningResultPayload.STREAM_CODEC);
 
-    public static ResourceLocation id(String path) {
-        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
-    }
+		LOGGER.info("Nemesis AI initialized!");
+	}
+
+	public static ResourceLocation id(String path) {
+		return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
+	}
 }
