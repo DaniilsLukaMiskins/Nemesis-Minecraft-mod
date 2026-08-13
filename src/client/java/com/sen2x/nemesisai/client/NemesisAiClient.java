@@ -17,7 +17,14 @@ public class NemesisAiClient implements ClientModInitializer {
         EntityRendererRegistry.register(ModEntities.NEMESIS, NemesisRenderer::new);
         EntityRendererRegistry.register(ModEntities.BLUE_SLIME_PROJECTILE, BlueSlimeProjectileRenderer::new);
         NemesisHud.register();
-        ClientTickEvents.END_CLIENT_TICK.register(client -> NemesisHudState.tick());
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            NemesisHudState.tick();
+            // Windows/GLFW can occasionally leave the mouse grabbed after an F11
+            // transition. Gameplay keeps it grabbed, but every menu must show it.
+            if (client.screen != null && client.mouseHandler.isMouseGrabbed()) {
+                client.mouseHandler.releaseMouse();
+            }
+        });
         ClientPlayNetworking.registerGlobalReceiver(LearningResultPayload.TYPE, (payload, context) -> {
             String message = NemesisHudState.update(payload.toLearningResult());
             if (message != null && context.player() != null) {

@@ -48,7 +48,9 @@ public final class ModEntities {
     public static void register() {
         FabricDefaultAttributeRegistry.register(
                 NEMESIS,
-                Zombie.createAttributes().add(Attributes.FOLLOW_RANGE, 100.0)
+                Zombie.createAttributes()
+                        .add(Attributes.MAX_HEALTH, 100.0)
+                        .add(Attributes.FOLLOW_RANGE, 100.0)
         );
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.SPAWN_EGGS)
                 .register(entries -> entries.accept(NEMESIS_SPAWN_EGG));
