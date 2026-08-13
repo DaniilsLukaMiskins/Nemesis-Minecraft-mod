@@ -1,11 +1,11 @@
-package dev.nemesis.entity;
+package com.sen2x.nemesisai.api;
 
 /**
- * Single shared tactic enum: drives {@link NemesisEntity}'s combat goals AND is what the
- * HUD/learning pipeline (com.sen2x.nemesisai.api) reports to the player.
+ * Shared contract between the AI module (Arseniy) and the mob module (teammate 2).
+ * The HUD/messages module (teammate 3) only ever renders these values.
  */
 public enum Tactic {
-	NORMAL("Normal Assault"),
+	NORMAL("Normal"),
 	FAST_CHASE("Fast Chase"),
 	DELAYED_ATTACK("Delayed Attack"),
 	ZIGZAG_APPROACH("Zigzag Approach"),

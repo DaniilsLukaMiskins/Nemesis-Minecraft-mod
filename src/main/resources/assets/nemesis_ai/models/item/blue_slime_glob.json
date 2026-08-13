@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "nemesis_ai:item/blue_slime_glob"
+  }
+}
