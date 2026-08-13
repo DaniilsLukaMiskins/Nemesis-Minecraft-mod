@@ -3,13 +3,12 @@
 	"id": "nemesis_ai",
 	"version": "${version}",
 	"name": "Nemesis AI",
-	"description": "An adaptive Minecraft enemy that learns from the player's combat tactics.",
+	"description": "A minimal hostile Nemesis mob for combat prototyping.",
 	"authors": [
 		"Sen2x"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"sources": "https://github.com/DaniilsLukaMiskins/Nemesis-Minecraft-mod"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/nemesis_ai/icon.png",
@@ -22,13 +21,6 @@
 			"com.sen2x.nemesisai.client.NemesisAiClient"
 		]
 	},
-	"mixins": [
-		"nemesis_ai.mixins.json",
-		{
-			"config": "nemesis_ai.client.mixins.json",
-			"environment": "client"
-		}
-	],
 	"depends": {
 		"fabricloader": ">=0.19.3",
 		"minecraft": "~1.21.1",

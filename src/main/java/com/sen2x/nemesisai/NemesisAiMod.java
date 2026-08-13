@@ -1,7 +1,6 @@
 package com.sen2x.nemesisai;
 
-import dev.nemesis.command.NemesisCommands;
-import dev.nemesis.entity.ModEntities;
+import com.sen2x.nemesisai.entity.ModEntities;
 import net.fabricmc.api.ModInitializer;
 
 import net.minecraft.resources.ResourceLocation;
@@ -24,8 +23,7 @@ public class NemesisAiMod implements ModInitializer {
 		// Proceed with mild caution.
 
 		ModEntities.register();
-		NemesisCommands.register();
-		LOGGER.info("Nemesis AI initialized!");
+		LOGGER.info("Nemesis AI initialized");
 	}
 
 	public static ResourceLocation id(String path) {
