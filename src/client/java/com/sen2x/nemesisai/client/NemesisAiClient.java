@@ -2,6 +2,7 @@ package com.sen2x.nemesisai.client;
 
 import com.sen2x.nemesisai.ModEntities;
 import com.sen2x.nemesisai.client.renderer.NemesisRenderer;
+import com.sen2x.nemesisai.client.renderer.BlueSlimeProjectileRenderer;
 import com.sen2x.nemesisai.network.LearningResultPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -14,6 +15,7 @@ public class NemesisAiClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         EntityRendererRegistry.register(ModEntities.NEMESIS, NemesisRenderer::new);
+        EntityRendererRegistry.register(ModEntities.BLUE_SLIME_PROJECTILE, BlueSlimeProjectileRenderer::new);
         NemesisHud.register();
         ClientTickEvents.END_CLIENT_TICK.register(client -> NemesisHudState.tick());
         ClientPlayNetworking.registerGlobalReceiver(LearningResultPayload.TYPE, (payload, context) -> {

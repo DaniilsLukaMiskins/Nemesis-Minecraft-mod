@@ -26,14 +26,13 @@ import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.Arrow;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import java.util.EnumSet;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
@@ -44,6 +43,19 @@ import software.bernie.geckolib.animation.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 public class NemesisEntity extends Zombie implements GeoEntity {
+    private enum Habit {
+        SHIELD(Tactic.DELAYED_ATTACK, "blocking with a shield"),
+        RANGED(Tactic.ZIGZAG_APPROACH, "using ranged attacks"),
+        FLEE(Tactic.FAST_CHASE, "retreating"),
+        TOWER(Tactic.RANGED_ATTACK, "building out of reach");
+        final Tactic counter;
+        final String reason;
+        Habit(Tactic counter, String reason) { this.counter = counter; this.reason = reason; }
+    }
+    private static final float HABIT_REWARD = 1.0F;
+    private static final float HABIT_MAX = 10.0F;
+    private static final float HABIT_DECAY = 0.97F;
+    private static final float HABIT_THRESHOLD = 3.0F;
     private static final int LEARNING_THRESHOLD = 3;
     private static final float MELEE_DAMAGE_MULTIPLIER = 0.5F;
     private static final float RANGED_DAMAGE_MULTIPLIER = 0.65F;
@@ -70,6 +82,9 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     private BlockPos ambushPoint;
     private int routeConfidence;
     private int ambushWaitTicks;
+    private final float[] habitWeights = new float[Habit.values().length];
+    private double lastTrackedDistance = -1.0;
+    private int habitObservationTimer;
 
     public NemesisEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
@@ -95,6 +110,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
             return false;
         }
         if (!level().isClientSide()) {
+            if (target instanceof ServerPlayer player && player.isBlocking()) rewardHabit(Habit.SHIELD, player);
             triggerAnim("actions", random.nextBoolean() ? "claw" : "bite");
             level().playSound(null, blockPosition(), SoundEvents.RAVAGER_ATTACK,
                     SoundSource.HOSTILE, 1.15F, 0.72F + random.nextFloat() * 0.12F);
@@ -112,6 +128,17 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         LivingEntity target = getTarget();
         if (target == null || !target.isAlive()) return;
         if (target instanceof Player player && tickCount % 40 == 0) observeRoute(player);
+        if (--habitObservationTimer <= 0) {
+            habitObservationTimer = 20;
+            for (int i = 0; i < habitWeights.length; i++) habitWeights[i] *= HABIT_DECAY;
+            if (target instanceof ServerPlayer player) {
+                double distance = distanceTo(player);
+                if (lastTrackedDistance >= 0 && distance - lastTrackedDistance > 1.5) rewardHabit(Habit.FLEE, player);
+                lastTrackedDistance = distance;
+                boolean tower = player.getY() - getY() > 3.0 && getNavigation().isDone() && !inMeleeRange(player);
+                if (tower) rewardHabit(Habit.TOWER, player);
+            }
+        }
     }
 
     private void observeRoute(Player player) {
@@ -243,10 +270,10 @@ public class NemesisEntity extends Zombie implements GeoEntity {
                 getNavigation().stop();
             }
             if (shotCooldown-- <= 0 && getSensing().hasLineOfSight(target)) {
-                Arrow arrow = new Arrow(level(), NemesisEntity.this, new ItemStack(Items.ARROW), null);
-                arrow.shoot(target.getX() - getX(), target.getEyeY() - arrow.getY(),
+                BlueSlimeProjectile slime = new BlueSlimeProjectile(level(), NemesisEntity.this);
+                slime.shoot(target.getX() - getX(), target.getEyeY() - slime.getY(),
                         target.getZ() - getZ(), 1.5F, 4.0F);
-                level().addFreshEntity(arrow);
+                level().addFreshEntity(slime);
                 shotCooldown = 40;
             }
         }
@@ -299,10 +326,43 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         if (!level().isClientSide() && wasHurt) {
             triggerAnim("actions", "hurt");
             if (source.getEntity() instanceof Player player) {
+                if (projectile && player instanceof ServerPlayer serverPlayer) rewardHabit(Habit.RANGED, serverPlayer);
                 if (projectile) learnRanged(player); else learnMelee(player);
             }
         }
         return wasHurt;
+    }
+
+    private void rewardHabit(Habit habit, ServerPlayer player) {
+        int index = habit.ordinal();
+        habitWeights[index] = Math.min(HABIT_MAX, habitWeights[index] + HABIT_REWARD);
+        Habit dominant = null;
+        float best = HABIT_THRESHOLD;
+        for (Habit candidate : Habit.values()) {
+            float weight = habitWeights[candidate.ordinal()];
+            if (weight > best) { best = weight; dominant = candidate; }
+        }
+        if (dominant == null || tactic == dominant.counter) return;
+        setTactic(dominant.counter);
+        float level = 0;
+        for (float weight : habitWeights) level += Math.min(1F, weight / HABIT_THRESHOLD);
+        LearningResult result = new LearningResult(dominant.counter,
+                "Player habit: " + dominant.reason + " (" + String.format(Locale.ROOT, "%.1f", best) + ")",
+                level / habitWeights.length);
+        NemesisMemoryStore.record(player.getUUID(), result);
+        NemesisFeedback.broadcastLearning(player, result);
+    }
+
+    public void resetLearning() {
+        Arrays.fill(habitWeights, 0F);
+        routeVisits.clear();
+        routeConfidence = 0;
+        ambushPoint = null;
+        ambushWaitTicks = 0;
+        meleeHits = rangedHits = 0;
+        learnedMelee = learnedRanged = false;
+        lastTrackedDistance = -1;
+        setTactic(Tactic.NORMAL);
     }
 
     @Override
@@ -398,6 +458,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         tag.putInt("NemesisRouteConfidence", routeConfidence);
         tag.putInt("NemesisAmbushWait", ambushWaitTicks);
         if (ambushPoint != null) tag.putLong("NemesisAmbushPoint", ambushPoint.asLong());
+        for (Habit habit : Habit.values()) tag.putFloat("NemesisHabit" + habit.name(), habitWeights[habit.ordinal()]);
     }
 
     @Override
@@ -410,6 +471,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         routeConfidence = tag.getInt("NemesisRouteConfidence");
         ambushWaitTicks = tag.getInt("NemesisAmbushWait");
         if (tag.contains("NemesisAmbushPoint")) ambushPoint = BlockPos.of(tag.getLong("NemesisAmbushPoint"));
+        for (Habit habit : Habit.values()) habitWeights[habit.ordinal()] = tag.getFloat("NemesisHabit" + habit.name());
         if (tag.contains("NemesisTactic")) {
             try {
                 setTactic(Tactic.valueOf(tag.getString("NemesisTactic")));

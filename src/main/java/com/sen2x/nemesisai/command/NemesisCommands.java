@@ -98,6 +98,8 @@ public final class NemesisCommands {
 	private static int resetMemory(CommandSourceStack source) throws CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
 		NemesisMemoryStore.reset(player.getUUID());
+		NemesisEntity nearest = nearest(player);
+		if (nearest != null) nearest.resetLearning();
 		source.sendSuccess(() -> Component.literal("Nemesis memory reset for " + player.getName().getString() + "."), true);
 		return 1;
 	}
