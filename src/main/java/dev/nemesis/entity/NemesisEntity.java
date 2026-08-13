@@ -26,35 +26,56 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.Locale;
 import java.util.Objects;
 
 public final class NemesisEntity extends Monster {
     private static final double NORMAL_MOVEMENT_SPEED = 0.25;
     private static final double FAST_MOVEMENT_SPEED = 0.38;
 
-    // Learning: how many times a player behavior must repeat before Nemesis switches tactic.
-    private static final int SHIELD_LEARN_THRESHOLD = 3;
-    private static final int RANGED_LEARN_THRESHOLD = 3;
-    private static final int FLEE_LEARN_THRESHOLD = 3;
-    private static final int FLEE_CHECK_INTERVAL_TICKS = 20;
+    /** A player habit Nemesis can pick up on, and the tactic it counters with. */
+    private enum Habit {
+        SHIELD(Tactic.DELAYED_ATTACK, "blocking with a shield"),
+        RANGED(Tactic.ZIGZAG_APPROACH, "using ranged attacks"),
+        FLEE(Tactic.FAST_CHASE, "retreating"),
+        TOWER(Tactic.RANGED_ATTACK, "building up out of reach");
+
+        private final Tactic counterTactic;
+        private final String description;
+
+        Habit(Tactic counterTactic, String description) {
+            this.counterTactic = counterTactic;
+            this.description = description;
+        }
+    }
+
+    // Habit-profile tuning: each observed behavior adds REWARD to its habit's weight (capped at
+    // MAX_WEIGHT); weights decay every OBSERVATION_INTERVAL_TICKS so unused habits fade instead
+    // of sticking forever. Whichever habit is dominant above LEARN_THRESHOLD wins the tactic.
+    private static final float REWARD = 1.0f;
+    private static final float MAX_WEIGHT = 10.0f;
+    private static final float DECAY_FACTOR = 0.97f;
+    private static final float LEARN_THRESHOLD = 3.0f;
+    private static final int OBSERVATION_INTERVAL_TICKS = 20;
     private static final double FLEE_DISTANCE_GAIN = 1.5;
+    private static final double TOWER_HEIGHT_GAP = 3.0;
 
     private static final String TAG_TACTIC = "NemesisTactic";
-    private static final String TAG_SHIELD_BLOCKS = "NemesisShieldBlocks";
-    private static final String TAG_RANGED_HITS = "NemesisRangedHits";
-    private static final String TAG_FLEE_SIGNALS = "NemesisFleeSignals";
+    private static final String TAG_SHIELD_WEIGHT = "NemesisShieldWeight";
+    private static final String TAG_RANGED_WEIGHT = "NemesisRangedWeight";
+    private static final String TAG_FLEE_WEIGHT = "NemesisFleeWeight";
+    private static final String TAG_TOWER_WEIGHT = "NemesisTowerWeight";
 
     private Tactic tactic = Tactic.NORMAL;
 
-    // Learned player-habit counters, persisted via addAdditionalSaveData/readAdditionalSaveData
+    // Learned player-habit weights, persisted via addAdditionalSaveData/readAdditionalSaveData
     // so Nemesis remembers a player's habits across server restarts.
-    private int shieldBlocks;
-    private int rangedHits;
-    private int fleeSignals;
+    private final float[] habitWeights = new float[Habit.values().length];
 
     private double lastTrackedDistance = -1.0;
-    private int fleeCheckTimer;
+    private int observationTimer;
 
     public NemesisEntity(EntityType<? extends NemesisEntity> type, Level level) {
         super(type, level);
@@ -97,9 +118,7 @@ public final class NemesisEntity extends Monster {
 
     /** Clears everything Nemesis has learned about the nearest player and returns to the default tactic. */
     public void resetLearning() {
-        shieldBlocks = 0;
-        rangedHits = 0;
-        fleeSignals = 0;
+        Arrays.fill(habitWeights, 0f);
         lastTrackedDistance = -1.0;
         setTactic(Tactic.NORMAL);
     }
@@ -110,10 +129,7 @@ public final class NemesisEntity extends Monster {
         if (!level().isClientSide() && wasHurt
                 && source.is(DamageTypeTags.IS_PROJECTILE)
                 && source.getEntity() instanceof ServerPlayer player) {
-            rangedHits++;
-            tryLearn(player, Tactic.ZIGZAG_APPROACH,
-                    "Player hit Nemesis with " + rangedHits + " ranged attacks",
-                    RANGED_LEARN_THRESHOLD, rangedHits);
+            reward(Habit.RANGED, player);
         }
         return wasHurt;
     }
@@ -121,10 +137,7 @@ public final class NemesisEntity extends Monster {
     @Override
     public boolean doHurtTarget(Entity target) {
         if (!level().isClientSide() && target instanceof ServerPlayer player && player.isBlocking()) {
-            shieldBlocks++;
-            tryLearn(player, Tactic.DELAYED_ATTACK,
-                    "Player blocked " + shieldBlocks + " of Nemesis's attacks with a shield",
-                    SHIELD_LEARN_THRESHOLD, shieldBlocks);
+            reward(Habit.SHIELD, player);
         }
         return super.doHurtTarget(target);
     }
@@ -133,10 +146,14 @@ public final class NemesisEntity extends Monster {
     protected void customServerAiStep() {
         super.customServerAiStep();
 
-        if (--fleeCheckTimer > 0) {
+        if (--observationTimer > 0) {
             return;
         }
-        fleeCheckTimer = FLEE_CHECK_INTERVAL_TICKS;
+        observationTimer = OBSERVATION_INTERVAL_TICKS;
+
+        for (int i = 0; i < habitWeights.length; i++) {
+            habitWeights[i] *= DECAY_FACTOR;
+        }
 
         if (!(getTarget() instanceof ServerPlayer player)) {
             lastTrackedDistance = -1.0;
@@ -145,46 +162,71 @@ public final class NemesisEntity extends Monster {
 
         double distance = distanceTo(player);
         if (lastTrackedDistance >= 0 && distance - lastTrackedDistance > FLEE_DISTANCE_GAIN) {
-            fleeSignals++;
-            tryLearn(player, Tactic.FAST_CHASE,
-                    "Player retreated from Nemesis " + fleeSignals + " times",
-                    FLEE_LEARN_THRESHOLD, fleeSignals);
+            reward(Habit.FLEE, player);
         }
         lastTrackedDistance = distance;
+
+        boolean heightGap = player.getY() - getY() > TOWER_HEIGHT_GAP;
+        boolean pathUnreachable = getNavigation().isDone() && !isInMeleeRange(player);
+        if (heightGap && pathUnreachable) {
+            reward(Habit.TOWER, player);
+        }
     }
 
-    /** Switches tactic and notifies the HUD once {@code progress} reaches {@code threshold}. */
-    private void tryLearn(ServerPlayer player, Tactic proposedTactic, String reason, int threshold, int progress) {
-        if (progress < threshold || tactic == proposedTactic) {
+    /** Reinforces a habit's weight and re-evaluates which tactic Nemesis should be using. */
+    private void reward(Habit habit, ServerPlayer player) {
+        int index = habit.ordinal();
+        habitWeights[index] = Math.min(MAX_WEIGHT, habitWeights[index] + REWARD);
+        evaluateTactic(player);
+    }
+
+    /** Picks the dominant habit (if any exceeds the learn threshold) and switches to its counter-tactic. */
+    private void evaluateTactic(ServerPlayer player) {
+        Habit dominant = null;
+        float best = LEARN_THRESHOLD;
+        for (Habit habit : Habit.values()) {
+            float weight = habitWeights[habit.ordinal()];
+            if (weight > best) {
+                best = weight;
+                dominant = habit;
+            }
+        }
+
+        if (dominant == null || tactic == dominant.counterTactic) {
             return;
         }
-        setTactic(proposedTactic);
-        LearningResult result = new LearningResult(proposedTactic, reason, computeAdaptationLevel());
-        NemesisFeedback.broadcastLearning(player, result);
+
+        setTactic(dominant.counterTactic);
+        String reason = "Player's habit of " + dominant.description + " reached weight "
+                + String.format(Locale.ROOT, "%.1f", best);
+        NemesisFeedback.broadcastLearning(player, new LearningResult(dominant.counterTactic, reason, computeAdaptationLevel()));
     }
 
     private float computeAdaptationLevel() {
-        float shieldProgress = Math.min(1f, shieldBlocks / (float) SHIELD_LEARN_THRESHOLD);
-        float rangedProgress = Math.min(1f, rangedHits / (float) RANGED_LEARN_THRESHOLD);
-        float fleeProgress = Math.min(1f, fleeSignals / (float) FLEE_LEARN_THRESHOLD);
-        return (shieldProgress + rangedProgress + fleeProgress) / 3f;
+        float sum = 0f;
+        for (float weight : habitWeights) {
+            sum += Math.min(1f, weight / LEARN_THRESHOLD);
+        }
+        return sum / habitWeights.length;
     }
 
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         tag.putString(TAG_TACTIC, tactic.name());
-        tag.putInt(TAG_SHIELD_BLOCKS, shieldBlocks);
-        tag.putInt(TAG_RANGED_HITS, rangedHits);
-        tag.putInt(TAG_FLEE_SIGNALS, fleeSignals);
+        tag.putFloat(TAG_SHIELD_WEIGHT, habitWeights[Habit.SHIELD.ordinal()]);
+        tag.putFloat(TAG_RANGED_WEIGHT, habitWeights[Habit.RANGED.ordinal()]);
+        tag.putFloat(TAG_FLEE_WEIGHT, habitWeights[Habit.FLEE.ordinal()]);
+        tag.putFloat(TAG_TOWER_WEIGHT, habitWeights[Habit.TOWER.ordinal()]);
     }
 
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
-        shieldBlocks = tag.getInt(TAG_SHIELD_BLOCKS);
-        rangedHits = tag.getInt(TAG_RANGED_HITS);
-        fleeSignals = tag.getInt(TAG_FLEE_SIGNALS);
+        habitWeights[Habit.SHIELD.ordinal()] = tag.getFloat(TAG_SHIELD_WEIGHT);
+        habitWeights[Habit.RANGED.ordinal()] = tag.getFloat(TAG_RANGED_WEIGHT);
+        habitWeights[Habit.FLEE.ordinal()] = tag.getFloat(TAG_FLEE_WEIGHT);
+        habitWeights[Habit.TOWER.ordinal()] = tag.getFloat(TAG_TOWER_WEIGHT);
         if (tag.contains(TAG_TACTIC)) {
             try {
                 setTactic(Tactic.valueOf(tag.getString(TAG_TACTIC)));

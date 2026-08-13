@@ -23,30 +23,37 @@ All commands live under `/nemesis` and require operator permission (level 2).
 | Command | What it does |
 | --- | --- |
 | `/nemesis summon` | Spawns a real Nemesis entity a couple blocks away. |
-| `/nemesis tactic <name>` | Forces the nearest Nemesis entity's combat tactic (`normal`, `fast_chase`, `delayed_attack`, `zigzag_approach`, `ranged_attack`) without going through the learning thresholds. |
+| `/nemesis tactic <name>` | Forces the nearest Nemesis entity's combat tactic (`normal`, `fast_chase`, `delayed_attack`, `zigzag_approach`, `ranged_attack`) without touching its habit weights. |
 | `/nemesis learn <name>` | Simulates a learning event straight to the HUD (server broadcasts a `LearningResult` without touching any entity) — useful for testing the HUD/message path in isolation. |
-| `/nemesis resetmemory` | Clears the calling player's stub record *and* resets the nearest live Nemesis entity's learned counters/tactic back to `normal`. |
+| `/nemesis resetmemory` | Clears the calling player's stub record *and* resets the nearest live Nemesis entity's habit weights/tactic back to `normal`. |
 
-## How Nemesis actually learns (real gameplay loop)
+## How Nemesis actually learns (weighted habit profile)
 
-`NemesisEntity` counts these player behaviors while it has a target and switches tactic (and
-notifies the HUD via `NemesisFeedback.broadcastLearning`) once a counter crosses its threshold
-(3 by default) **and** that tactic isn't already active:
+`NemesisEntity` keeps a small habit profile: four float weights (shield-blocking,
+ranged-attacking, retreating, building up out of reach), each starting at 0.
 
-| Player behavior | Detected in | Tactic Nemesis switches to |
+- Every time a behavior is observed, its weight gets **+1 reward** (capped at 10).
+- Every second, all four weights **decay by 3%** — a habit the player stops repeating fades out
+  instead of permanently locking Nemesis into a counter-tactic.
+- After every reward, Nemesis re-evaluates: whichever habit has the **highest weight above 3.0**
+  wins, and Nemesis switches to that habit's counter-tactic (if it isn't already using it) and
+  tells the HUD why (`NemesisFeedback.broadcastLearning`).
+
+| Player behavior | Detected in | Counter-tactic |
 | --- | --- | --- |
 | Blocks Nemesis's melee hits with a shield | `NemesisEntity#doHurtTarget` | `DELAYED_ATTACK` |
 | Hits Nemesis with a ranged weapon (arrow, etc.) | `NemesisEntity#hurt` | `ZIGZAG_APPROACH` |
-| Increases distance from Nemesis while being chased (checked every second) | `NemesisEntity#customServerAiStep` | `FAST_CHASE` |
+| Increases distance from Nemesis while being chased | `NemesisEntity#customServerAiStep` (every second) | `FAST_CHASE` |
+| Is 3+ blocks above Nemesis with no reachable path (towering/turtling) | `NemesisEntity#customServerAiStep` (every second) | `RANGED_ATTACK` |
 
-The counters and current tactic are persisted via `addAdditionalSaveData`/`readAdditionalSaveData`,
-so a Nemesis remembers a player's habits across a server restart (as long as the chunk/entity
-isn't unloaded and discarded).
+Because it's a weighted profile rather than a one-shot counter, a player who mixes habits (e.g.
+blocks sometimes, shoots sometimes) makes Nemesis track whichever behavior is currently
+*dominant*, and old habits genuinely fade if the player stops using them — closer to "learning"
+than a simple tally.
 
-`RANGED_ATTACK` (Nemesis shooting arrows at a fleeing/towering player) exists as a tactic and
-combat goal but currently has no automatic trigger — it's reachable via `/nemesis tactic
-ranged_attack` for demos. A good follow-up would be detecting the player building upward near
-Nemesis and switching to it automatically.
+All four weights and the current tactic are persisted via
+`addAdditionalSaveData`/`readAdditionalSaveData`, so a Nemesis remembers a player's habits
+across a server restart (as long as the chunk/entity isn't unloaded and discarded).
 
 ## Scenarios to verify
 
@@ -56,16 +63,22 @@ Nemesis and switching to it automatically.
       Nemesis starts approaching at an angle instead of walking straight at you.
 - [ ] Let it chase you and back away 3 times (roughly a second apart, moving away each time) →
       **"TACTIC CHANGED: FAST CHASE"**, movement speed visibly increases.
-- [ ] `/nemesis resetmemory` near that Nemesis → its tactic goes back to `normal` and the
-      counters restart (next shield block should trigger "LEARNED" again, not "TACTIC CHANGED").
+- [ ] Retreat onto a pillar/tower 3+ blocks above Nemesis and stay out of its reach for a few
+      seconds → **"TACTIC CHANGED: RANGED ATTACK"**, Nemesis starts shooting arrows at you.
+- [ ] Stop repeating a habit (e.g. stop blocking) and keep fighting normally for ~30+ seconds →
+      that habit's weight decays below the dominant one and Nemesis can switch away from it.
+- [ ] `/nemesis resetmemory` near that Nemesis → its tactic goes back to `normal` and all habit
+      weights reset to 0 (next shield block should trigger "LEARNED" again, not "TACTIC CHANGED").
 - [ ] `/nemesis learn <name>` shows the HUD banner/action-bar message without needing to fight
       anything — useful to sanity-check the HUD alone.
 - [ ] HUD does not draw anything before the first learning event; F1 (hide GUI) hides it too.
 
 ## Known follow-ups
 
-- `RANGED_ATTACK` has no automatic learning trigger yet (see above) — the plan called for
-  "ranged attack vs. a player who towers up", which needs block-place tracking near the entity.
+- The tower-detection heuristic (height gap + unreachable path) is a proxy for "player built up
+  out of reach," not literal block-place tracking — it can also fire if a player is simply stuck
+  on natural terrain above Nemesis, which is arguably fine (still "can't reach me" from Nemesis's
+  point of view) but worth knowing about.
 - `NemesisMemoryStore` (`src/main/java/com/sen2x/nemesisai/api/NemesisMemoryStore.java`) is
   still just a stub per-player "last simulated result" cache used by `/nemesis learn`; the real
   memory now lives on the entity itself via NBT, which is the more correct place for it.
