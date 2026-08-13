@@ -4,6 +4,9 @@ import com.sen2x.nemesisai.api.LearningResult;
 import com.sen2x.nemesisai.api.NemesisFeedback;
 import com.sen2x.nemesisai.api.NemesisMemoryStore;
 import com.sen2x.nemesisai.api.Tactic;
+import com.sen2x.nemesisai.parasite.ParasiteHostState;
+import com.sen2x.nemesisai.parasite.ParasiteHosts;
+import com.sen2x.nemesisai.parasite.ParasiteLifecycle;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
@@ -25,6 +28,7 @@ import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.monster.Zombie;
+import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -34,6 +38,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Comparator;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.animation.AnimatableManager;
@@ -90,6 +95,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     private final float[] habitWeights = new float[Habit.values().length];
     private double lastTrackedDistance = -1.0;
     private int habitObservationTimer;
+    private int parasiteCooldown;
 
     public NemesisEntity(EntityType<? extends Zombie> entityType, Level level) {
         super(entityType, level);
@@ -98,6 +104,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     @Override
     protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
+        goalSelector.addGoal(1, new ParasiteAnimalGoal());
         goalSelector.addGoal(1, new AmbushGoal());
         goalSelector.addGoal(1, new StalkRouteGoal());
         goalSelector.addGoal(2, new NormalMeleeGoal());
@@ -129,6 +136,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     public void aiStep() {
         super.aiStep();
         if (tacticCooldown > 0) tacticCooldown--;
+        if (parasiteCooldown > 0) parasiteCooldown--;
         if (level().isClientSide()) return;
 
         LivingEntity target = getTarget();
@@ -205,6 +213,45 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     private boolean inMeleeRange(LivingEntity target) {
         double reach = getBbWidth() * 2.0F;
         return distanceToSqr(target) <= reach * reach + target.getBbWidth();
+    }
+
+    private final class ParasiteAnimalGoal extends Goal {
+        private Animal host;
+        private int repathTicks;
+
+        private ParasiteAnimalGoal() { setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK)); }
+
+        @Override
+        public boolean canUse() {
+            if (parasiteCooldown > 0) return false;
+            host = level().getEntitiesOfClass(Animal.class, getBoundingBox().inflate(16.0),
+                            animal -> animal.isAlive() && ParasiteHosts.isSupported(animal)
+                                    && !((ParasiteHostState) animal).nemesisAi$isInfected())
+                    .stream().min(Comparator.comparingDouble(NemesisEntity.this::distanceToSqr)).orElse(null);
+            return host != null;
+        }
+
+        @Override public boolean canContinueToUse() {
+            return host != null && host.isAlive() && parasiteCooldown == 0
+                    && !((ParasiteHostState) host).nemesisAi$isInfected() && distanceToSqr(host) < 24.0 * 24.0;
+        }
+
+        @Override public void tick() {
+            if (host == null) return;
+            getLookControl().setLookAt(host, 30.0F, 30.0F);
+            if (inMeleeRange(host)) {
+                getNavigation().stop();
+                if (ParasiteLifecycle.infect(host)) {
+                    triggerAnim("actions", "bite");
+                    parasiteCooldown = 20 * 20;
+                }
+            } else if (--repathTicks <= 0) {
+                repathTicks = 10;
+                getNavigation().moveTo(host, 1.0);
+            }
+        }
+
+        @Override public void stop() { host = null; repathTicks = 0; }
     }
 
     private final class NormalMeleeGoal extends MeleeAttackGoal {
@@ -523,6 +570,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         tag.putString("NemesisTactic", tactic.name());
         tag.putInt("NemesisRouteConfidence", routeConfidence);
         tag.putInt("NemesisAmbushWait", ambushWaitTicks);
+        tag.putInt("NemesisParasiteCooldown", parasiteCooldown);
         if (ambushPoint != null) tag.putLong("NemesisAmbushPoint", ambushPoint.asLong());
         long[] routeCells = new long[routeVisits.size()];
         int[] routeCounts = new int[routeVisits.size()];
@@ -546,6 +594,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
         learnedRanged = tag.getBoolean("NemesisLearnedRanged");
         routeConfidence = tag.getInt("NemesisRouteConfidence");
         ambushWaitTicks = tag.getInt("NemesisAmbushWait");
+        parasiteCooldown = tag.getInt("NemesisParasiteCooldown");
         if (tag.contains("NemesisAmbushPoint")) ambushPoint = BlockPos.of(tag.getLong("NemesisAmbushPoint"));
         long[] routeCells = tag.getLongArray("NemesisRouteCells");
         int[] routeCounts = tag.getIntArray("NemesisRouteCounts");
