@@ -3,7 +3,8 @@
 	"package": "com.sen2x.nemesisai.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
-		"NemesisMixin"
+		"NemesisMixin",
+		"AnimalParasiteMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
