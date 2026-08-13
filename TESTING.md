@@ -1,8 +1,10 @@
-# Testing Nemesis AI (HUD / commands slice)
+# Testing Nemesis AI
 
-This covers the pieces owned by the HUD, testing, and presentation role. The AI
-learning logic and the real Nemesis mob are separate modules and are simulated
-here with stub data so this slice can be tested independently.
+There is now a single, real Nemesis (`dev.nemesis.entity.NemesisEntity`) and a single shared
+`dev.nemesis.entity.Tactic` enum. It observes real combat (shield blocks, ranged hits, player
+retreats) and auto-switches tactic; the HUD reacts to those real events over the network. The
+`/nemesis learn` and `/nemesis tactic` commands are still there as manual overrides for demos
+and debugging.
 
 ## Running a test world
 
@@ -20,41 +22,58 @@ All commands live under `/nemesis` and require operator permission (level 2).
 
 | Command | What it does |
 | --- | --- |
-| `/nemesis summon` | Spawns the real Nemesis entity a couple blocks away. |
-| `/nemesis learn <tactic>` | Simulates a learning event for one of: `default`, `delayed_attack`, `zigzag_approach`, `rush_pursuit`, `ranged_tower_attack`. Triggers the same HUD/message path the real AI module will use. |
-| `/nemesis resetmemory` | Clears the stub per-player memory store. |
-| `/nemesis tactic <name>` | Teammate 2's command: forces the nearest Nemesis entity's combat tactic (`normal`, `fast_chase`, `delayed_attack`, `zigzag_approach`, `ranged_attack`) — separate from the HUD/learning `Tactic` enum above, see note below. |
+| `/nemesis summon` | Spawns a real Nemesis entity a couple blocks away. |
+| `/nemesis tactic <name>` | Forces the nearest Nemesis entity's combat tactic (`normal`, `fast_chase`, `delayed_attack`, `zigzag_approach`, `ranged_attack`) without going through the learning thresholds. |
+| `/nemesis learn <name>` | Simulates a learning event straight to the HUD (server broadcasts a `LearningResult` without touching any entity) — useful for testing the HUD/message path in isolation. |
+| `/nemesis resetmemory` | Clears the calling player's stub record *and* resets the nearest live Nemesis entity's learned counters/tactic back to `normal`. |
+
+## How Nemesis actually learns (real gameplay loop)
+
+`NemesisEntity` counts these player behaviors while it has a target and switches tactic (and
+notifies the HUD via `NemesisFeedback.broadcastLearning`) once a counter crosses its threshold
+(3 by default) **and** that tactic isn't already active:
+
+| Player behavior | Detected in | Tactic Nemesis switches to |
+| --- | --- | --- |
+| Blocks Nemesis's melee hits with a shield | `NemesisEntity#doHurtTarget` | `DELAYED_ATTACK` |
+| Hits Nemesis with a ranged weapon (arrow, etc.) | `NemesisEntity#hurt` | `ZIGZAG_APPROACH` |
+| Increases distance from Nemesis while being chased (checked every second) | `NemesisEntity#customServerAiStep` | `FAST_CHASE` |
+
+The counters and current tactic are persisted via `addAdditionalSaveData`/`readAdditionalSaveData`,
+so a Nemesis remembers a player's habits across a server restart (as long as the chunk/entity
+isn't unloaded and discarded).
+
+`RANGED_ATTACK` (Nemesis shooting arrows at a fleeing/towering player) exists as a tactic and
+combat goal but currently has no automatic trigger — it's reachable via `/nemesis tactic
+ranged_attack` for demos. A good follow-up would be detecting the player building upward near
+Nemesis and switching to it automatically.
 
 ## Scenarios to verify
 
-- [ ] `/nemesis learn delayed_attack` on a fresh session shows **"LEARNED: DELAYED ATTACK"** in the action bar and on the HUD banner, and the adaptation bar fills to 50%.
-- [ ] Running `/nemesis learn zigzag_approach` right after shows **"TACTIC CHANGED: ZIGZAG APPROACH"** (different tactic than last time).
-- [ ] Running `/nemesis learn zigzag_approach` again (same tactic as current) shows no new banner text, but the adaptation bar still reflects the latest value.
-- [ ] `/nemesis resetmemory` clears the stored state for that player (verify via a fresh `/nemesis learn ...` behaving like the first-ever event).
-- [ ] `/nemesis summon` places a visibly named test mob near the player, usable for demo footage before the real entity is ready.
-- [ ] HUD does not draw anything before the first learning event (no bar/message clutter on a clean HUD).
-- [ ] F1 (hide GUI) also hides the Nemesis HUD.
+- [ ] Fresh-spawn a Nemesis, block 3 of its melee hits with a shield → HUD shows
+      **"LEARNED: DELAYED ATTACK"**, Nemesis starts waiting out your guard instead of spamming hits.
+- [ ] Shoot the same Nemesis with 3 arrows → HUD shows **"TACTIC CHANGED: ZIGZAG APPROACH"**,
+      Nemesis starts approaching at an angle instead of walking straight at you.
+- [ ] Let it chase you and back away 3 times (roughly a second apart, moving away each time) →
+      **"TACTIC CHANGED: FAST CHASE"**, movement speed visibly increases.
+- [ ] `/nemesis resetmemory` near that Nemesis → its tactic goes back to `normal` and the
+      counters restart (next shield block should trigger "LEARNED" again, not "TACTIC CHANGED").
+- [ ] `/nemesis learn <name>` shows the HUD banner/action-bar message without needing to fight
+      anything — useful to sanity-check the HUD alone.
+- [ ] HUD does not draw anything before the first learning event; F1 (hide GUI) hides it too.
 
-## Integration checklist
+## Known follow-ups
 
-- [x] `/nemesis summon` now spawns the real Nemesis entity (`dev.nemesis.entity.ModEntities.NEMESIS`).
-- [ ] Have the AI module call `NemesisFeedback.broadcastLearning(ServerPlayer, LearningResult)`
-  (`src/main/java/com/sen2x/nemesisai/api/NemesisFeedback.java`) instead of the `/nemesis learn`
-  test command — the HUD path is already wired to it.
-- [ ] Replace `NemesisMemoryStore` (`src/main/java/com/sen2x/nemesisai/api/NemesisMemoryStore.java`)
-  with the AI module's persistent memory once available; keep the same method names or update
-  `NemesisCommands#resetMemory` accordingly.
-
-## Known duplication to resolve as a team
-
-The mob module ended up with its own `dev.nemesis.entity.Tactic` enum (`normal`, `fast_chase`,
-`delayed_attack`, `zigzag_approach`, `ranged_attack`) driving `NemesisEntity`'s combat goals,
-separate from this branch's `com.sen2x.nemesisai.api.Tactic` (used for the HUD/learning
-messages). They currently don't talk to each other — picking a tactic via `/nemesis tactic`
-does not update the HUD, and `/nemesis learn` does not change the entity's behavior. Once the
-AI module (Arseniy) is ready to drive `NemesisEntity#setTactic`, the team should agree on a
-single shared `Tactic` enum instead of keeping both.
-
-There are also two unused/duplicate mod entrypoints from the merge (`dev.nemesis.NemesisMod`
-and `dev.nemesis.client.NemesisClient`) that aren't registered in `fabric.mod.json` — dead code
-left over from the mob module's branch, worth deleting once confirmed unneeded.
+- `RANGED_ATTACK` has no automatic learning trigger yet (see above) — the plan called for
+  "ranged attack vs. a player who towers up", which needs block-place tracking near the entity.
+- `NemesisMemoryStore` (`src/main/java/com/sen2x/nemesisai/api/NemesisMemoryStore.java`) is
+  still just a stub per-player "last simulated result" cache used by `/nemesis learn`; the real
+  memory now lives on the entity itself via NBT, which is the more correct place for it.
+- There are still two unused/duplicate mod entrypoints left over from the merge
+  (`dev.nemesis.NemesisMod`, `dev.nemesis.client.NemesisClient`) that aren't registered in
+  `fabric.mod.json` — dead code, safe to delete once the team confirms nothing needs them.
+- A separate open PR (`agent/geckolib-nemesis-integration`) adds an animated GeckoLib model and
+  its own third `NemesisEntity`/`ModEntities` variant in yet another package
+  (`com.sen2x.nemesisai.entity`) — merging it will need the same kind of reconciliation this
+  branch just did, pointing it at `dev.nemesis.entity.NemesisEntity`/`Tactic` instead of
+  reintroducing a duplicate.

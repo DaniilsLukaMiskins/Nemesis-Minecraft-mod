@@ -21,12 +21,13 @@ The enemy observes player combat tactics, remembers repeated behavior, and chang
 
 ## Status
 
-Initial Fabric project configured, built, and launched successfully.
-
-HUD, learning-event networking, and test/debug commands (`/nemesis summon`,
-`/nemesis learn <tactic>`, `/nemesis resetmemory`) are implemented against a
-stub `LearningResult`/`Tactic` contract so the AI module and mob module can be
-wired in independently. See [TESTING.md](TESTING.md) for how to exercise it.
+There is one consolidated Nemesis entity (`dev.nemesis.entity.NemesisEntity`) and one shared
+`Tactic` enum driving both its combat AI and the HUD. It automatically switches tactic based on
+real player behavior — shield blocks, ranged hits, and retreating — and persists what it's
+learned across restarts. HUD, learning-event networking, and test/debug commands (`/nemesis
+summon`, `/nemesis tactic`, `/nemesis learn`, `/nemesis resetmemory`) are wired to it. See
+[TESTING.md](TESTING.md) for how to exercise it and what's still a manual-only tactic
+(`RANGED_ATTACK` has no automatic trigger yet).
 
 ## Team
 
@@ -44,7 +45,10 @@ Built as a three-person hackathon project.
 - [x] `LEARNED:` / `TACTIC CHANGED:` messages
 - [x] `/nemesis summon` and `/nemesis resetmemory` commands
 - [x] Test world instructions and scenario checklist
-- [ ] Full scenario pass once the AI and mob modules are integrated
+- [x] Consolidated the competing `NemesisEntity`/`Tactic` implementations from parallel branches
+      into one, and wired real gameplay (shield blocks, ranged hits, retreating) into the
+      learning/HUD pipeline
+- [ ] In-game scenario pass on the consolidated build
 - [ ] Screenshots, Devpost page, demo video
 
 ## License

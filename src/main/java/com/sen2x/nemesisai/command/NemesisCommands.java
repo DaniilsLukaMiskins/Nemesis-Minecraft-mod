@@ -5,9 +5,9 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.sen2x.nemesisai.api.LearningResult;
 import com.sen2x.nemesisai.api.NemesisFeedback;
 import com.sen2x.nemesisai.api.NemesisMemoryStore;
-import com.sen2x.nemesisai.api.Tactic;
 import dev.nemesis.entity.ModEntities;
 import dev.nemesis.entity.NemesisEntity;
+import dev.nemesis.entity.Tactic;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -16,14 +16,20 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+
+import java.util.Comparator;
 
 /**
  * Test/debug commands for teammate 3's HUD and integration work. {@code summon} places the
- * real Nemesis entity (teammate 2's mob module), {@code learn} simulates a learning event so
- * the HUD can be exercised without the real AI module (Arseniy) wired in, and
- * {@code resetmemory} clears the stub memory store.
+ * real Nemesis entity, {@code learn} simulates a learning event so the HUD can be exercised
+ * directly, and {@code resetmemory} clears both the stub per-player memory store and the
+ * nearest live Nemesis entity's learned habits.
  */
 public final class NemesisCommands {
+	private static final double RESET_SEARCH_RADIUS = 64.0;
+
 	private NemesisCommands() {
 	}
 
@@ -63,7 +69,24 @@ public final class NemesisCommands {
 	private static int resetMemory(CommandSourceStack source) throws CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
 		NemesisMemoryStore.reset(player.getUUID());
-		source.sendSuccess(() -> Component.literal("Nemesis memory reset for " + player.getName().getString() + "."), true);
+
+		Vec3 origin = source.getPosition();
+		NemesisEntity nearest = source.getLevel()
+				.getEntitiesOfClass(NemesisEntity.class,
+						AABB.ofSize(origin, RESET_SEARCH_RADIUS * 2.0, RESET_SEARCH_RADIUS * 2.0, RESET_SEARCH_RADIUS * 2.0),
+						NemesisEntity::isAlive)
+				.stream()
+				.min(Comparator.comparingDouble(entity -> entity.distanceToSqr(origin)))
+				.orElse(null);
+
+		if (nearest != null) {
+			nearest.resetLearning();
+			source.sendSuccess(() -> Component.literal("Nemesis memory reset for " + player.getName().getString()
+					+ " (including the nearest Nemesis entity)."), true);
+		} else {
+			source.sendSuccess(() -> Component.literal("Nemesis memory reset for " + player.getName().getString()
+					+ " (no live Nemesis entity nearby to reset)."), true);
+		}
 		return 1;
 	}
 

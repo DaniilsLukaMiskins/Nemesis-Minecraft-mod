@@ -2,7 +2,7 @@ package com.sen2x.nemesisai.network;
 
 import com.sen2x.nemesisai.NemesisAiMod;
 import com.sen2x.nemesisai.api.LearningResult;
-import com.sen2x.nemesisai.api.Tactic;
+import dev.nemesis.entity.Tactic;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;

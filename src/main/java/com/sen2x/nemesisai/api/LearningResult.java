@@ -1,5 +1,7 @@
 package com.sen2x.nemesisai.api;
 
+import dev.nemesis.entity.Tactic;
+
 /**
  * One learning event: the tactic Nemesis picked, why, and its overall adaptation level.
  *
