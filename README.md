@@ -29,6 +29,10 @@ persists that profile across restarts via NBT. HUD, learning-event networking, a
 commands (`/nemesis summon`, `/nemesis tactic`, `/nemesis learn`, `/nemesis resetmemory`) are all
 wired to it. See [TESTING.md](TESTING.md) for how to exercise it.
 
+A headless `./gradlew runServer` smoke test confirms the mod initializes and the world boots
+with no crash; a full in-game combat pass (client + player) is still outstanding — see
+TESTING.md's scenario checklist.
+
 ## Team
 
 Built as a three-person hackathon project.
@@ -48,8 +52,12 @@ Built as a three-person hackathon project.
 - [x] Consolidated the competing `NemesisEntity`/`Tactic` implementations from parallel branches
       into one, and wired real gameplay (shield blocks, ranged hits, retreating, being towered
       on) into a weighted, decaying habit profile that drives tactic selection and the HUD
-- [ ] In-game scenario pass on the consolidated build
-- [ ] Screenshots, Devpost page, demo video
+- [x] Headless server smoke test (mod loads, world boots, no crash)
+- [x] Devpost draft ([DEVPOST.md](DEVPOST.md)) — needs the team's own inspiration/challenges/
+      accomplishments sections plus screenshots before pasting into the real Devpost page
+- [ ] In-game scenario pass on the consolidated build (needs a real client + player — outside
+      what I can drive from here)
+- [ ] Screenshots, demo video, publishing the actual Devpost page
 
 ## License
 

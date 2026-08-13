@@ -73,6 +73,30 @@ across a server restart (as long as the chunk/entity isn't unloaded and discarde
       anything — useful to sanity-check the HUD alone.
 - [ ] HUD does not draw anything before the first learning event; F1 (hide GUI) hides it too.
 
+## Headless smoke test (verified)
+
+`./gradlew runServer` was run once with `run/eula.txt` accepted and a flat/low-view-distance
+`run/server.properties` (both are gitignored, throwaway dev files). Result: the mod initializes
+cleanly and the world reaches full startup with no crash:
+
+```
+[main/INFO] (nemesis_ai) Nemesis AI initialized!
+...
+[Server thread/INFO] (Minecraft) Done (1.026s)! For help, type "help"
+```
+
+Two log lines are expected noise, not bugs:
+- `No data fixer registered for nemesis:nemesis` — standard Minecraft warning for any modded
+  entity ID with no registered NBT schema-migration entry; harmless for a mod that isn't shipping
+  cross-version save migrations.
+- The `Yggdrasil`/SSL certificate errors are this dev machine's proxy failing to reach Mojang's
+  auth servers (`online-mode=true` default) — unrelated to the mod; set `online-mode=false` in
+  `server.properties` for local testing to avoid the noise.
+
+This only proves the mod *loads and the world boots* — it does not exercise combat, the HUD, or
+the commands, since that needs a real connected player. The scenarios above still need an actual
+in-game pass.
+
 ## Known follow-ups
 
 - The tower-detection heuristic (height gap + unreachable path) is a proxy for "player built up
@@ -82,9 +106,10 @@ across a server restart (as long as the chunk/entity isn't unloaded and discarde
 - `NemesisMemoryStore` (`src/main/java/com/sen2x/nemesisai/api/NemesisMemoryStore.java`) is
   still just a stub per-player "last simulated result" cache used by `/nemesis learn`; the real
   memory now lives on the entity itself via NBT, which is the more correct place for it.
-- There are still two unused/duplicate mod entrypoints left over from the merge
-  (`dev.nemesis.NemesisMod`, `dev.nemesis.client.NemesisClient`) that aren't registered in
-  `fabric.mod.json` — dead code, safe to delete once the team confirms nothing needs them.
+- `dev.nemesis.client.NemesisClient` (an unused duplicate `ClientModInitializer`, never
+  registered in `fabric.mod.json`) has been deleted. `dev.nemesis.NemesisMod` looked like the
+  same kind of dead entrypoint but isn't — `ModEntities` reads its `MOD_ID` constant ("nemesis")
+  for the entity/spawn-egg registry IDs, so it's kept; only its unused `onInitialize()` is dead.
 - A separate open PR (`agent/geckolib-nemesis-integration`) adds an animated GeckoLib model and
   its own third `NemesisEntity`/`ModEntities` variant in yet another package
   (`com.sen2x.nemesisai.entity`) — merging it will need the same kind of reconciliation this
