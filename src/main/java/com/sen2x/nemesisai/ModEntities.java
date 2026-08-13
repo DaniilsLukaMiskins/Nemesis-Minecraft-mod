@@ -51,6 +51,8 @@ public final class ModEntities {
         );
         ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.SPAWN_EGGS)
                 .register(entries -> entries.accept(NEMESIS_SPAWN_EGG));
+        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.INGREDIENTS)
+                .register(entries -> entries.accept(BLUE_SLIME_GLOB));
 
         NemesisAiMod.LOGGER.info("Registered Nemesis entity");
     }

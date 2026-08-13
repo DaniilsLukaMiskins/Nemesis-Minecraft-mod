@@ -98,6 +98,7 @@ public class NemesisEntity extends Zombie implements GeoEntity {
     protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(1, new AmbushGoal());
+        goalSelector.addGoal(1, new StalkRouteGoal());
         goalSelector.addGoal(2, new NormalMeleeGoal());
         goalSelector.addGoal(2, new DelayedAttackGoal());
         goalSelector.addGoal(2, new ZigzagGoal());
@@ -131,7 +132,8 @@ public class NemesisEntity extends Zombie implements GeoEntity {
 
         LivingEntity target = getTarget();
         if (target == null || !target.isAlive()) return;
-        if (target instanceof Player player && tickCount % 40 == 0) observeRoute(player);
+        // Sample quickly enough to enter stalking mode before ordinary pursuit closes the gap.
+        if (target instanceof Player player && tickCount % 10 == 0) observeRoute(player);
         if (--habitObservationTimer <= 0) {
             habitObservationTimer = 20;
             for (int i = 0; i < habitWeights.length; i++) habitWeights[i] *= HABIT_DECAY;
@@ -318,6 +320,44 @@ public class NemesisEntity extends Zombie implements GeoEntity {
                 }
             }
             if (ambushWaitTicks <= 0) ambushPoint = null;
+        }
+        @Override public void stop() { setSprinting(tactic == Tactic.FAST_CHASE); }
+    }
+
+    /** Watches a partly learned route without rushing into melee and ruining the ambush. */
+    private final class StalkRouteGoal extends Goal {
+        private int repositionTicks;
+        private StalkRouteGoal() { setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK)); }
+        @Override public boolean canUse() {
+            return routeConfidence > 0 && routeConfidence < 3 && ambushPoint == null && hasTarget();
+        }
+        @Override public boolean canContinueToUse() { return canUse(); }
+        @Override public void tick() {
+            LivingEntity target = getTarget();
+            if (target == null) return;
+            getLookControl().setLookAt(target, 20, 20);
+            double distance = distanceTo(target);
+            if (--repositionTicks > 0) return;
+            repositionTicks = 12;
+
+            Vec3 fromTarget = position().subtract(target.position());
+            if (fromTarget.lengthSqr() < 0.1) fromTarget = new Vec3(1, 0, 0);
+            Vec3 radial = fromTarget.normalize();
+            if (distance < 14.0) {
+                Vec3 retreat = target.position().add(radial.scale(20.0));
+                getNavigation().moveTo(retreat.x, retreat.y, retreat.z, 1.15);
+                setSprinting(true);
+            } else if (distance > 28.0) {
+                Vec3 watch = target.position().add(radial.scale(20.0));
+                getNavigation().moveTo(watch.x, watch.y, watch.z, 1.0);
+                setSprinting(false);
+            } else {
+                // Shift sideways so stalking is visible but keep a safe observation distance.
+                Vec3 side = new Vec3(-radial.z, 0, radial.x).scale(random.nextBoolean() ? 5.0 : -5.0);
+                Vec3 watch = position().add(side);
+                getNavigation().moveTo(watch.x, watch.y, watch.z, 0.8);
+                setSprinting(false);
+            }
         }
         @Override public void stop() { setSprinting(tactic == Tactic.FAST_CHASE); }
     }
