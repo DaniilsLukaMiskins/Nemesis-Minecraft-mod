@@ -23,6 +23,7 @@ import java.util.Comparator;
  * selectable combat tactics, and HUD learning notifications.
  */
 public final class NemesisCommands {
+	private static final double SEARCH_RADIUS = 100.0;
 	private NemesisCommands() {
 	}
 
@@ -65,7 +66,7 @@ public final class NemesisCommands {
 		ServerPlayer player = source.getPlayerOrException();
 		NemesisEntity nemesis = nearest(player);
 		if (nemesis == null) {
-			source.sendFailure(Component.literal("No Nemesis found within 32 blocks."));
+			source.sendFailure(Component.literal("No Nemesis found within 100 blocks."));
 			return 0;
 		}
 		source.sendSuccess(() -> Component.literal("NEMESIS MEMORY | Melee: " + nemesis.getMeleeHits()
@@ -81,7 +82,7 @@ public final class NemesisCommands {
 		ServerPlayer player = source.getPlayerOrException();
 		NemesisEntity nemesis = nearest(player);
 		if (nemesis == null) {
-			source.sendFailure(Component.literal("No Nemesis found within 32 blocks."));
+			source.sendFailure(Component.literal("No Nemesis found within 100 blocks."));
 			return 0;
 		}
 		nemesis.setTactic(tactic);
@@ -91,7 +92,7 @@ public final class NemesisCommands {
 
 	private static NemesisEntity nearest(ServerPlayer player) {
 		return player.level().getEntitiesOfClass(NemesisEntity.class,
-				player.getBoundingBox().inflate(32.0)).stream()
+				player.getBoundingBox().inflate(SEARCH_RADIUS)).stream()
 				.min(Comparator.comparingDouble(player::distanceToSqr)).orElse(null);
 	}
 
